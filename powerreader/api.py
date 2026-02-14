@@ -74,3 +74,9 @@ async def averages(
         return {"device_id": device_id, "days": days, "data": []}
     data = await get_avg_by_time_of_day(request.app.state.db_path, resolved, days)
     return {"device_id": resolved, "days": days, "data": data}
+
+
+@router.get("/log")
+async def mqtt_log(request: Request, limit: int = 200) -> dict:
+    data = await db.get_mqtt_log(request.app.state.db_path, limit=limit)
+    return {"data": data}

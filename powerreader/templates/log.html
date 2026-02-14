@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Powerreader - Message Log</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            padding: 1rem;
+        }
+        header { display: flex; justify-content: center; align-items: center; margin-bottom: 1rem; gap: 1rem; }
+        h1 { color: #00d4ff; font-size: 1.4rem; margin: 0; }
+        nav a { color: #8892b0; text-decoration: none; font-size: 0.85rem; }
+        nav a:hover { color: #00d4ff; }
+        .panel {
+            background: #16213e;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        .panel h2 { font-size: 1rem; color: #8892b0; margin-bottom: 0.75rem; }
+        .controls { margin-bottom: 0.75rem; }
+        .controls label { color: #8892b0; font-size: 0.85rem; margin-right: 0.5rem; }
+        .controls select {
+            background: #0f3460;
+            color: #e0e0e0;
+            border: 1px solid #1a5276;
+            padding: 0.3rem 0.5rem;
+            border-radius: 4px;
+        }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        th {
+            text-align: left;
+            padding: 0.5rem;
+            border-bottom: 1px solid #1a5276;
+            color: #8892b0;
+            font-weight: 600;
+        }
+        td { padding: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .status-ok { color: #e0e0e0; }
+        .status-invalid { color: #f0a500; }
+        .status-error { color: #e74c3c; }
+        .no-data { color: #8892b0; font-style: italic; padding: 2rem; text-align: center; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Powerreader</h1>
+        <nav><a href="/">Dashboard</a> | <a href="/log">Message Log</a></nav>
+    </header>
+
+    <div class="panel">
+        <h2>MQTT Message Log</h2>
+        <div class="controls">
+            <label for="limit-select">Show:</label>
+            <select id="limit-select">
+                <option value="50">50</option>
+                <option value="200" selected>200</option>
+                <option value="500">500</option>
+            </select>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Status</th>
+                    <th>Device</th>
+                    <th>Summary</th>
+                    <th>Topic</th>
+                </tr>
+            </thead>
+            <tbody id="log-body"></tbody>
+        </table>
+        <div class="no-data" id="no-data" style="display:none;">No log entries.</div>
+    </div>
+
+    <script>
+        const REFRESH_MS = 30000;
+
+        function statusClass(s) {
+            if (s === "invalid") return "status-invalid";
+            if (s === "error") return "status-error";
+            return "status-ok";
+        }
+
+        async function fetchLog() {
+            const limit = document.getElementById("limit-select").value;
+            try {
+                const resp = await fetch("/api/log?limit=" + limit);
+                if (!resp.ok) return;
+                const body = await resp.json();
+                const rows = body.data || [];
+                const tbody = document.getElementById("log-body");
+                const noData = document.getElementById("no-data");
+
+                if (rows.length === 0) {
+                    tbody.innerHTML = "";
+                    noData.style.display = "block";
+                    return;
+                }
+                noData.style.display = "none";
+
+                tbody.innerHTML = rows.map(r =>
+                    `<tr>
+                        <td>${r.timestamp || ""}</td>
+                        <td class="${statusClass(r.status)}">${r.status}</td>
+                        <td>${r.device_id || ""}</td>
+                        <td>${r.summary || ""}</td>
+                        <td>${r.topic || ""}</td>
+                    </tr>`
+                ).join("");
+            } catch (_) { /* silent */ }
+        }
+
+        document.getElementById("limit-select").addEventListener("change", fetchLog);
+        fetchLog();
+        setInterval(fetchLog, REFRESH_MS);
+    </script>
+</body>
+</html>

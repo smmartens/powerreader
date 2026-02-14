@@ -84,6 +84,17 @@ async def get_avg_by_time_of_day(
         return [dict(row) for row in await cursor.fetchall()]
 
 
+async def prune_mqtt_log(db_path: str, retention_days: int) -> int:
+    """Delete mqtt_log entries older than retention_days. Returns rows deleted."""
+    async with aiosqlite.connect(db_path) as db:
+        cursor = await db.execute(
+            "DELETE FROM mqtt_log WHERE timestamp < datetime('now', ?)",
+            (f"-{retention_days} days",),
+        )
+        await db.commit()
+        return cursor.rowcount
+
+
 def setup_scheduler(db_path: str, retention_days: int) -> AsyncIOScheduler:
     """Create and configure the aggregation scheduler (caller starts it)."""
     scheduler = AsyncIOScheduler()
@@ -107,5 +118,12 @@ def setup_scheduler(db_path: str, retention_days: int) -> AsyncIOScheduler:
         hours=24,
         args=[db_path, retention_days],
         id="prune_raw",
+    )
+    scheduler.add_job(
+        prune_mqtt_log,
+        "interval",
+        hours=24,
+        args=[db_path, retention_days],
+        id="prune_mqtt_log",
     )
     return scheduler

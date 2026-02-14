@@ -35,6 +35,15 @@ CREATE TABLE IF NOT EXISTS daily_agg (
     reading_count INTEGER,
     UNIQUE(device_id, date)
 );
+
+CREATE TABLE IF NOT EXISTS mqtt_log (
+    id INTEGER PRIMARY KEY,
+    timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+    device_id TEXT,
+    status TEXT NOT NULL,
+    summary TEXT,
+    topic TEXT
+);
 """
 
 
@@ -126,5 +135,34 @@ async def get_daily_agg(
                WHERE device_id = ? AND date >= ? AND date <= ?
                ORDER BY date""",
             (device_id, start, end),
+        )
+        return [dict(r) for r in await cursor.fetchall()]
+
+
+async def insert_mqtt_log(
+    db_path: str,
+    device_id: str | None,
+    status: str,
+    summary: str | None,
+    topic: str | None,
+) -> int:
+    """Insert an MQTT log entry and return its row id."""
+    async with aiosqlite.connect(db_path) as db:
+        cursor = await db.execute(
+            """INSERT INTO mqtt_log (device_id, status, summary, topic)
+               VALUES (?, ?, ?, ?)""",
+            (device_id, status, summary, topic),
+        )
+        await db.commit()
+        return cursor.lastrowid  # type: ignore[return-value]
+
+
+async def get_mqtt_log(db_path: str, limit: int = 200) -> list[dict]:
+    """Return recent MQTT log entries ordered by id descending."""
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM mqtt_log ORDER BY id DESC LIMIT ?",
+            (limit,),
         )
         return [dict(r) for r in await cursor.fetchall()]
