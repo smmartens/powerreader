@@ -82,3 +82,11 @@ class TestAveragesEndpoint:
         body = resp.json()
         assert body["device_id"] == "meter1"
         assert body["days"] == 30
+
+
+class TestDashboard:
+    def test_returns_html(self, api_client):
+        resp = api_client.get("/")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "Powerreader" in resp.text
