@@ -86,7 +86,8 @@ class TestParseFieldMap:
         }
 
     def test_skips_invalid_entries(self) -> None:
-        result = parse_field_map("total_in=SML.Total_in,bad_entry,power_w=SML.Power_curr")
+        raw = "total_in=SML.Total_in,bad_entry,power_w=SML.Power_curr"
+        result = parse_field_map(raw)
         assert len(result) == 2
         assert "total_in" in result
         assert "power_w" in result
