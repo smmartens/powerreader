@@ -33,3 +33,4 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
 [tool.pytest.ini_options]
 addopts = "--cov=powerreader --cov-fail-under=80"
 testpaths = ["tests"]
+asyncio_mode = "auto"
