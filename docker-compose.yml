@@ -1,0 +1,21 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+
+  powerreader:
+    build: .
+    depends_on:
+      - mosquitto
+    ports:
+      - "8080:8080"
+    environment:
+      MQTT_HOST: mosquitto
+    volumes:
+      - powerreader_data:/data
+
+volumes:
+  powerreader_data:
