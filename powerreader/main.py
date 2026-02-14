@@ -3,10 +3,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from powerreader.config import Settings
+from powerreader.db import init_db
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    # Startup: will wire MQTT + scheduler in later phases
+    settings = Settings()
+    await init_db(settings.db_path)
     yield
     # Shutdown: cleanup will go here
 
