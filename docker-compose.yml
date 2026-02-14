@@ -14,6 +14,7 @@ services:
       - "8080:8080"
     environment:
       MQTT_HOST: mosquitto
+      # FIELD_MAP: "total_in=LK13BE.total,total_out=LK13BE.total_out,power_w=LK13BE.current,voltage=LK13BE.voltage_l1"
     volumes:
       - powerreader_data:/data
 

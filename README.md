@@ -41,6 +41,7 @@ All configuration is via environment variables (set in `docker-compose.yml` or `
 | `POLL_STORE_MODE` | `all` | `all` = store every message, `downsample_60s` = 1/min |
 | `RAW_RETENTION_DAYS` | `30` | Days to keep raw readings |
 | `WEB_PORT` | `8080` | Dashboard port |
+| `FIELD_MAP` | `""` | Custom MQTT field mapping (comma-separated `key=path` pairs, e.g. `total_in=SML.Total_in,power_w=SML.Power_curr`). Empty = LK13BE defaults. |
 
 ## Architecture
 
