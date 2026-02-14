@@ -52,7 +52,7 @@ class TestHistoryEndpoint:
         assert resp.status_code == 400
 
     def test_defaults(self, api_client):
-        resp = api_client.get("/api/history")
+        resp = api_client.get("/api/history?device_id=meter1")
         assert resp.status_code == 200
         body = resp.json()
         assert body["range"] == "24h"
@@ -77,7 +77,7 @@ class TestAveragesEndpoint:
         assert resp.json()["data"] == []
 
     def test_defaults(self, api_client):
-        resp = api_client.get("/api/averages")
+        resp = api_client.get("/api/averages?device_id=meter1")
         assert resp.status_code == 200
         body = resp.json()
         assert body["device_id"] == "meter1"
