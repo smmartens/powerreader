@@ -23,9 +23,7 @@ async def _resolve_device_id(db_path: str, device_id: str | None) -> str | None:
 
 
 @router.get("/current")
-async def current_reading(
-    request: Request, device_id: str | None = None
-) -> dict:
+async def current_reading(request: Request, device_id: str | None = None) -> dict:
     reading = await db.get_latest_reading(request.app.state.db_path, device_id)
     if reading is None:
         raise HTTPException(status_code=404, detail="No readings found")
