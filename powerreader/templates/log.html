@@ -45,6 +45,18 @@
         .status-invalid { color: #f0a500; }
         .status-error { color: #e74c3c; }
         .no-data { color: #8892b0; font-style: italic; padding: 2rem; text-align: center; }
+        footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 1.5rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            font-size: 0.75rem;
+            color: #5a6a8a;
+        }
+        footer a { color: #5a6a8a; text-decoration: none; }
+        footer a:hover { color: #00d4ff; }
     </style>
 </head>
 <body>
@@ -77,6 +89,15 @@
         </table>
         <div class="no-data" id="no-data" style="display:none;">No log entries.</div>
     </div>
+
+    <footer>
+        <span id="footer-version">Powerreader</span>
+        <span>
+            <a href="https://github.com/smmartens" target="_blank">smmartens</a>
+            &middot;
+            <a href="https://github.com/smmartens/powerreader" target="_blank">GitHub</a>
+        </span>
+    </footer>
 
     <script>
         const REFRESH_MS = 30000;
@@ -115,6 +136,10 @@
                 ).join("");
             } catch (_) { /* silent */ }
         }
+
+        fetch("/api/version").then(r => r.json()).then(d => {
+            document.getElementById("footer-version").textContent = "Powerreader v" + d.version;
+        }).catch(() => {});
 
         document.getElementById("limit-select").addEventListener("change", fetchLog);
         fetchLog();
