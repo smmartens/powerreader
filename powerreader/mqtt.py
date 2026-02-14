@@ -17,13 +17,31 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Default field mapping for Tasmota SML payloads.
+# Default field mapping for Tasmota LK13BE payloads.
 DEFAULT_FIELD_MAP: dict[str, str] = {
-    "total_in": "SML.Total_in",
-    "total_out": "SML.Total_out",
-    "power_w": "SML.Power_curr",
-    "voltage": "SML.Volt_p1",
+    "total_in": "LK13BE.total",
+    "total_out": "LK13BE.total_out",
+    "power_w": "LK13BE.current",
+    "voltage": "LK13BE.voltage_l1",
 }
+
+
+def parse_field_map(raw: str) -> dict[str, str]:
+    """Parse a comma-separated field mapping string.
+
+    Format: "total_in=SML.Total_in,power_w=SML.Power_curr"
+    Returns DEFAULT_FIELD_MAP if the string is empty.
+    """
+    if not raw.strip():
+        return DEFAULT_FIELD_MAP
+    result: dict[str, str] = {}
+    for pair in raw.split(","):
+        pair = pair.strip()
+        if "=" not in pair:
+            continue
+        key, value = pair.split("=", 1)
+        result[key.strip()] = value.strip()
+    return result
 
 
 def _resolve_dotted(data: dict, path: str) -> float | None:
@@ -84,6 +102,7 @@ class MqttSubscriber:
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        self._field_map = parse_field_map(settings.field_map)
         self._client = paho_mqtt.Client(
             callback_api_version=paho_mqtt.CallbackAPIVersion.VERSION2
         )
@@ -111,7 +130,7 @@ class MqttSubscriber:
         userdata: object,
         msg: paho_mqtt.MQTTMessage,
     ) -> None:
-        parsed = parse_tasmota_message(msg.payload)
+        parsed = parse_tasmota_message(msg.payload, field_map=self._field_map)
         if parsed is None:
             logger.debug("Skipping unparseable message on %s", msg.topic)
             return

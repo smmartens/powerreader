@@ -11,3 +11,4 @@ class Settings(BaseSettings):
     poll_store_mode: str = "all"
     raw_retention_days: int = 30
     web_port: int = 8080
+    field_map: str = ""

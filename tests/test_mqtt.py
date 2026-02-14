@@ -7,7 +7,12 @@ import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from powerreader.config import Settings
-from powerreader.mqtt import MqttSubscriber, extract_device_id, parse_tasmota_message
+from powerreader.mqtt import (
+    MqttSubscriber,
+    extract_device_id,
+    parse_field_map,
+    parse_tasmota_message,
+)
 
 
 class TestParseTasmotaMessage:
@@ -36,17 +41,55 @@ class TestParseTasmotaMessage:
         assert parse_tasmota_message(b"") is None
 
     def test_missing_time_field(self) -> None:
-        assert parse_tasmota_message(b'{"SML": {"Total_in": 1}}') is None
+        assert parse_tasmota_message(b'{"LK13BE": {"total": 1}}') is None
 
     def test_non_dict_payload(self) -> None:
         assert parse_tasmota_message(b"[1, 2, 3]") is None
 
-    def test_custom_field_map(self, sample_tasmota_payload: bytes) -> None:
-        custom = {"power_w": "SML.Power_curr"}
-        result = parse_tasmota_message(sample_tasmota_payload, field_map=custom)
+    def test_custom_field_map(self) -> None:
+        """Test parsing with a non-default (SML) field mapping."""
+        import json
+
+        payload = json.dumps(
+            {
+                "Time": "2024-01-15T14:30:00",
+                "SML": {"Total_in": 42000.5, "Power_curr": 538},
+            }
+        ).encode()
+        custom = {"total_in": "SML.Total_in", "power_w": "SML.Power_curr"}
+        result = parse_tasmota_message(payload, field_map=custom)
         assert result is not None
+        assert result["total_in"] == 42000.5
         assert result["power_w"] == 538.0
-        assert "total_in" not in result
+        assert "voltage" not in result
+
+
+class TestParseFieldMap:
+    def test_empty_string_returns_defaults(self) -> None:
+        from powerreader.mqtt import DEFAULT_FIELD_MAP
+
+        assert parse_field_map("") is DEFAULT_FIELD_MAP
+        assert parse_field_map("  ") is DEFAULT_FIELD_MAP
+
+    def test_parses_comma_separated_pairs(self) -> None:
+        result = parse_field_map("total_in=SML.Total_in,power_w=SML.Power_curr")
+        assert result == {
+            "total_in": "SML.Total_in",
+            "power_w": "SML.Power_curr",
+        }
+
+    def test_strips_whitespace(self) -> None:
+        result = parse_field_map(" total_in = SML.Total_in , power_w = SML.Power_curr ")
+        assert result == {
+            "total_in": "SML.Total_in",
+            "power_w": "SML.Power_curr",
+        }
+
+    def test_skips_invalid_entries(self) -> None:
+        result = parse_field_map("total_in=SML.Total_in,bad_entry,power_w=SML.Power_curr")
+        assert len(result) == 2
+        assert "total_in" in result
+        assert "power_w" in result
 
 
 class TestExtractDeviceId:
