@@ -1,14 +1,21 @@
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from powerreader.aggregation import setup_scheduler
 from powerreader.api import router as api_router
 from powerreader.config import Settings
 from powerreader.db import init_db
 from powerreader.mqtt import MqttSubscriber
+
+_PKG_DIR = Path(__file__).parent
+_templates = Jinja2Templates(directory=_PKG_DIR / "templates")
 
 
 @asynccontextmanager
@@ -27,6 +34,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="powerreader", lifespan=lifespan)
 app.include_router(api_router)
+app.mount("/static", StaticFiles(directory=_PKG_DIR / "static"), name="static")
+
+
+@app.get("/", response_class=HTMLResponse)
+async def dashboard(request: Request) -> HTMLResponse:
+    return _templates.TemplateResponse(request, "dashboard.html")
 
 
 @app.get("/health")
