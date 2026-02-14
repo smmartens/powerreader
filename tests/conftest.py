@@ -78,3 +78,20 @@ async def seeded_db(initialized_db: str) -> str:
             initialized_db, device_id, ts, total_in, total_out, power_w, voltage
         )
     return initialized_db
+
+
+@pytest.fixture
+async def api_db(seeded_db: str) -> str:
+    """Seeded DB with hourly and daily aggregates pre-computed."""
+    from powerreader.aggregation import compute_daily_agg, compute_hourly_agg
+
+    await compute_hourly_agg(seeded_db)
+    await compute_daily_agg(seeded_db)
+    return seeded_db
+
+
+@pytest.fixture
+def api_client(api_db: str) -> TestClient:
+    """TestClient with app.state.db_path pointing to the seeded test DB."""
+    app.state.db_path = api_db
+    return TestClient(app, raise_server_exceptions=False)
