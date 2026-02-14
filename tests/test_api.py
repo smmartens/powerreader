@@ -2,7 +2,7 @@ import asyncio
 
 from fastapi.testclient import TestClient
 
-from powerreader.db import init_db
+from powerreader.db import init_db, insert_mqtt_log
 from powerreader.main import app
 
 
@@ -84,9 +84,59 @@ class TestAveragesEndpoint:
         assert body["days"] == 30
 
 
+class TestLogEndpoint:
+    def test_returns_log_entries(self, tmp_path):
+        db_path = str(tmp_path / "log.db")
+        asyncio.run(init_db(db_path))
+        asyncio.run(insert_mqtt_log(db_path, "dev1", "ok", "538W", "tele/dev1/SENSOR"))
+        asyncio.run(
+            insert_mqtt_log(
+                db_path, "dev1", "invalid", "unparseable payload", "tele/dev1/SENSOR"
+            )
+        )
+        app.state.db_path = db_path
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/api/log")
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert len(data) == 2
+        assert data[0]["status"] == "invalid"
+        assert data[1]["status"] == "ok"
+
+    def test_empty_db_returns_empty_list(self, tmp_path):
+        client = _make_empty_client(tmp_path)
+        resp = client.get("/api/log")
+        assert resp.status_code == 200
+        assert resp.json()["data"] == []
+
+    def test_limit_parameter(self, tmp_path):
+        db_path = str(tmp_path / "log.db")
+        asyncio.run(init_db(db_path))
+        for i in range(5):
+            asyncio.run(insert_mqtt_log(db_path, "dev1", "ok", f"entry {i}", "t"))
+        app.state.db_path = db_path
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/api/log?limit=3")
+        assert resp.status_code == 200
+        assert len(resp.json()["data"]) == 3
+
+
 class TestDashboard:
     def test_returns_html(self, api_client):
         resp = api_client.get("/")
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
         assert "Powerreader" in resp.text
+
+    def test_dashboard_has_log_link(self, api_client):
+        resp = api_client.get("/")
+        assert resp.status_code == 200
+        assert "/log" in resp.text
+
+
+class TestLogPage:
+    def test_returns_html(self, api_client):
+        resp = api_client.get("/log")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "Message Log" in resp.text

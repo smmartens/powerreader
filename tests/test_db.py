@@ -1,7 +1,14 @@
 import aiosqlite
 import pytest
 
-from powerreader.db import get_latest_reading, get_readings, init_db, insert_reading
+from powerreader.db import (
+    get_latest_reading,
+    get_mqtt_log,
+    get_readings,
+    init_db,
+    insert_mqtt_log,
+    insert_reading,
+)
 
 
 @pytest.mark.asyncio
@@ -78,3 +85,46 @@ async def test_get_readings_empty_range(initialized_db: str) -> None:
         initialized_db, "meter1", "2025-01-01T00:00:00", "2025-01-02T00:00:00"
     )
     assert readings == []
+
+
+@pytest.mark.asyncio
+async def test_insert_and_get_mqtt_log(initialized_db: str) -> None:
+    await insert_mqtt_log(
+        initialized_db, "dev1", "ok", "538W, 42000.5kWh", "tele/dev1/SENSOR"
+    )
+    await insert_mqtt_log(
+        initialized_db, "dev1", "invalid", "unparseable payload", "tele/dev1/SENSOR"
+    )
+
+    rows = await get_mqtt_log(initialized_db, limit=10)
+    assert len(rows) == 2
+    # Ordered by id DESC — most recent first
+    assert rows[0]["status"] == "invalid"
+    assert rows[1]["status"] == "ok"
+    assert rows[1]["summary"] == "538W, 42000.5kWh"
+    assert rows[0]["device_id"] == "dev1"
+    assert rows[0]["topic"] == "tele/dev1/SENSOR"
+
+
+@pytest.mark.asyncio
+async def test_get_mqtt_log_respects_limit(initialized_db: str) -> None:
+    for i in range(5):
+        await insert_mqtt_log(initialized_db, "dev1", "ok", f"entry {i}", "t")
+    rows = await get_mqtt_log(initialized_db, limit=3)
+    assert len(rows) == 3
+
+
+@pytest.mark.asyncio
+async def test_get_mqtt_log_empty(initialized_db: str) -> None:
+    rows = await get_mqtt_log(initialized_db)
+    assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_mqtt_log_table_created(initialized_db: str) -> None:
+    async with aiosqlite.connect(initialized_db) as db:
+        cursor = await db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='mqtt_log'"
+        )
+        row = await cursor.fetchone()
+    assert row is not None

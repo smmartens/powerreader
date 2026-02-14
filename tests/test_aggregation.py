@@ -5,9 +5,10 @@ from powerreader.aggregation import (
     compute_daily_agg,
     compute_hourly_agg,
     get_avg_by_time_of_day,
+    prune_mqtt_log,
     prune_raw_readings,
 )
-from powerreader.db import init_db, insert_reading
+from powerreader.db import init_db, insert_mqtt_log, insert_reading
 
 
 @pytest.mark.asyncio
@@ -138,3 +139,33 @@ async def test_daily_agg_idempotent(seeded_db: str) -> None:
 async def test_avg_by_time_of_day_empty(initialized_db: str) -> None:
     result = await get_avg_by_time_of_day(initialized_db, "meter1")
     assert result == []
+
+
+@pytest.mark.asyncio
+async def test_prune_mqtt_log_deletes_old(db_path: str) -> None:
+    await init_db(db_path)
+    # Insert an old entry by manually setting timestamp
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            "INSERT INTO mqtt_log (timestamp, device_id, status, summary, topic)"
+            " VALUES ('2020-01-01T00:00:00', 'dev1', 'ok', 'old', 't')"
+        )
+        await db.commit()
+    # Insert a recent entry (uses default datetime('now'))
+    await insert_mqtt_log(db_path, "dev1", "ok", "recent", "t")
+
+    deleted = await prune_mqtt_log(db_path, retention_days=30)
+    assert deleted == 1
+
+    async with aiosqlite.connect(db_path) as db:
+        cursor = await db.execute("SELECT COUNT(*) FROM mqtt_log")
+        (remaining,) = await cursor.fetchone()
+    assert remaining == 1
+
+
+@pytest.mark.asyncio
+async def test_prune_mqtt_log_keeps_recent(db_path: str) -> None:
+    await init_db(db_path)
+    await insert_mqtt_log(db_path, "dev1", "ok", "recent", "t")
+    deleted = await prune_mqtt_log(db_path, retention_days=30)
+    assert deleted == 0

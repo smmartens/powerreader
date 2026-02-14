@@ -5,12 +5,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import time
 from typing import TYPE_CHECKING
 
 import paho.mqtt.client as paho_mqtt
 
-from powerreader.db import insert_reading
+from powerreader.db import insert_mqtt_log, insert_reading
 
 if TYPE_CHECKING:
     from powerreader.config import Settings
@@ -55,9 +56,12 @@ def _resolve_dotted(data: dict, path: str) -> float | None:
     if current is None:
         return None
     try:
-        return float(current)
+        val = float(current)
     except (TypeError, ValueError):
         return None
+    if not math.isfinite(val):
+        return None
+    return val
 
 
 def parse_tasmota_message(
@@ -130,35 +134,82 @@ class MqttSubscriber:
         userdata: object,
         msg: paho_mqtt.MQTTMessage,
     ) -> None:
-        parsed = parse_tasmota_message(msg.payload, field_map=self._field_map)
-        if parsed is None:
-            logger.debug("Skipping unparseable message on %s", msg.topic)
-            return
-
-        device_id = extract_device_id(msg.topic)
-        now = time.monotonic()
-
-        # Downsample check
-        if self._settings.poll_store_mode == "downsample_60s":
-            last = self._last_stored.get(device_id)
-            if last is not None and now - last < 60.0:
+        try:
+            parsed = parse_tasmota_message(msg.payload, field_map=self._field_map)
+            if parsed is None:
+                logger.debug("Skipping unparseable message on %s", msg.topic)
+                device_id = extract_device_id(msg.topic)
+                if self._loop is not None:
+                    asyncio.run_coroutine_threadsafe(
+                        insert_mqtt_log(
+                            self._settings.db_path,
+                            device_id,
+                            "invalid",
+                            "unparseable payload",
+                            msg.topic,
+                        ),
+                        self._loop,
+                    )
                 return
 
-        self._last_stored[device_id] = now
+            device_id = extract_device_id(msg.topic)
+            now = time.monotonic()
 
-        if self._loop is not None:
-            asyncio.run_coroutine_threadsafe(
-                insert_reading(
-                    db_path=self._settings.db_path,
-                    device_id=device_id,
-                    timestamp=parsed["timestamp"],
-                    total_in=parsed.get("total_in"),
-                    total_out=parsed.get("total_out"),
-                    power_w=parsed.get("power_w"),
-                    voltage=parsed.get("voltage"),
-                ),
-                self._loop,
-            )
+            # Downsample check
+            if self._settings.poll_store_mode == "downsample_60s":
+                last = self._last_stored.get(device_id)
+                if last is not None and now - last < 60.0:
+                    return
+
+            self._last_stored[device_id] = now
+
+            # Build summary from parsed values
+            parts: list[str] = []
+            if parsed.get("power_w") is not None:
+                parts.append(f"{parsed['power_w']}W")
+            if parsed.get("total_in") is not None:
+                parts.append(f"{parsed['total_in']}kWh")
+            if parsed.get("voltage") is not None:
+                parts.append(f"{parsed['voltage']}V")
+            summary = ", ".join(parts) if parts else None
+
+            if self._loop is not None:
+                asyncio.run_coroutine_threadsafe(
+                    insert_reading(
+                        db_path=self._settings.db_path,
+                        device_id=device_id,
+                        timestamp=parsed["timestamp"],
+                        total_in=parsed.get("total_in"),
+                        total_out=parsed.get("total_out"),
+                        power_w=parsed.get("power_w"),
+                        voltage=parsed.get("voltage"),
+                    ),
+                    self._loop,
+                )
+                asyncio.run_coroutine_threadsafe(
+                    insert_mqtt_log(
+                        self._settings.db_path,
+                        device_id,
+                        "ok",
+                        summary,
+                        msg.topic,
+                    ),
+                    self._loop,
+                )
+        except Exception as exc:
+            logger.exception("Error processing message on %s", msg.topic)
+            device_id = extract_device_id(msg.topic)
+            if self._loop is not None:
+                asyncio.run_coroutine_threadsafe(
+                    insert_mqtt_log(
+                        self._settings.db_path,
+                        device_id,
+                        "error",
+                        str(exc),
+                        msg.topic,
+                    ),
+                    self._loop,
+                )
 
     def start(self, loop: asyncio.AbstractEventLoop) -> None:
         """Connect to broker and start the network loop in a background thread."""

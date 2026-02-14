@@ -42,6 +42,11 @@ async def dashboard(request: Request) -> HTMLResponse:
     return _templates.TemplateResponse(request, "dashboard.html")
 
 
+@app.get("/log", response_class=HTMLResponse)
+async def log_page(request: Request) -> HTMLResponse:
+    return _templates.TemplateResponse(request, "log.html")
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
