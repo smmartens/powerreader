@@ -13,6 +13,15 @@ def _make_empty_client(tmp_path) -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
 
 
+class TestVersionEndpoint:
+    def test_returns_version(self, api_client):
+        resp = api_client.get("/api/version")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "version" in data
+        assert isinstance(data["version"], str)
+
+
 class TestCurrentEndpoint:
     def test_returns_latest_reading(self, api_client):
         resp = api_client.get("/api/current?device_id=meter1")

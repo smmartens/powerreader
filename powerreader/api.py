@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Request
 
-from powerreader import db
+from powerreader import __version__, db
 from powerreader.aggregation import get_avg_by_time_of_day
 
 router = APIRouter(prefix="/api")
@@ -20,6 +20,11 @@ async def _resolve_device_id(db_path: str, device_id: str | None) -> str | None:
         return device_id
     latest = await db.get_latest_reading(db_path, None)
     return latest["device_id"] if latest else None
+
+
+@router.get("/version")
+async def version_info() -> dict:
+    return {"version": __version__}
 
 
 @router.get("/current")
