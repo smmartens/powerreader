@@ -65,9 +65,7 @@ async def insert_reading(
         return cursor.lastrowid  # type: ignore[return-value]
 
 
-async def get_latest_reading(
-    db_path: str, device_id: str | None = None
-) -> dict | None:
+async def get_latest_reading(db_path: str, device_id: str | None = None) -> dict | None:
     """Return the most recent raw reading, optionally filtered by device."""
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
@@ -100,3 +98,33 @@ async def get_readings(
         )
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
+
+
+async def get_hourly_agg(
+    db_path: str, device_id: str, start: str, end: str
+) -> list[dict]:
+    """Return hourly aggregates for a device within [start, end] time range."""
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """SELECT * FROM hourly_agg
+               WHERE device_id = ? AND hour >= ? AND hour <= ?
+               ORDER BY hour""",
+            (device_id, start, end),
+        )
+        return [dict(r) for r in await cursor.fetchall()]
+
+
+async def get_daily_agg(
+    db_path: str, device_id: str, start: str, end: str
+) -> list[dict]:
+    """Return daily aggregates for a device within [start, end] date range."""
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """SELECT * FROM daily_agg
+               WHERE device_id = ? AND date >= ? AND date <= ?
+               ORDER BY date""",
+            (device_id, start, end),
+        )
+        return [dict(r) for r in await cursor.fetchall()]

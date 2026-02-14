@@ -43,12 +43,8 @@ async def test_insert_and_get_latest(initialized_db: str) -> None:
 
 @pytest.mark.asyncio
 async def test_get_latest_reading_by_device(initialized_db: str) -> None:
-    await insert_reading(
-        initialized_db, "meter1", "2024-01-15T14:00:00", power_w=100.0
-    )
-    await insert_reading(
-        initialized_db, "meter2", "2024-01-15T15:00:00", power_w=200.0
-    )
+    await insert_reading(initialized_db, "meter1", "2024-01-15T14:00:00", power_w=100.0)
+    await insert_reading(initialized_db, "meter2", "2024-01-15T15:00:00", power_w=200.0)
 
     latest = await get_latest_reading(initialized_db, device_id="meter1")
     assert latest is not None
@@ -64,15 +60,9 @@ async def test_get_latest_reading_empty_db(initialized_db: str) -> None:
 
 @pytest.mark.asyncio
 async def test_get_readings_time_range(initialized_db: str) -> None:
-    await insert_reading(
-        initialized_db, "meter1", "2024-01-15T10:00:00", power_w=100.0
-    )
-    await insert_reading(
-        initialized_db, "meter1", "2024-01-15T12:00:00", power_w=200.0
-    )
-    await insert_reading(
-        initialized_db, "meter1", "2024-01-15T14:00:00", power_w=300.0
-    )
+    await insert_reading(initialized_db, "meter1", "2024-01-15T10:00:00", power_w=100.0)
+    await insert_reading(initialized_db, "meter1", "2024-01-15T12:00:00", power_w=200.0)
+    await insert_reading(initialized_db, "meter1", "2024-01-15T14:00:00", power_w=300.0)
 
     readings = await get_readings(
         initialized_db, "meter1", "2024-01-15T11:00:00", "2024-01-15T13:00:00"
@@ -83,9 +73,7 @@ async def test_get_readings_time_range(initialized_db: str) -> None:
 
 @pytest.mark.asyncio
 async def test_get_readings_empty_range(initialized_db: str) -> None:
-    await insert_reading(
-        initialized_db, "meter1", "2024-01-15T10:00:00", power_w=100.0
-    )
+    await insert_reading(initialized_db, "meter1", "2024-01-15T10:00:00", power_w=100.0)
     readings = await get_readings(
         initialized_db, "meter1", "2025-01-01T00:00:00", "2025-01-02T00:00:00"
     )
