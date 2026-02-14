@@ -121,8 +121,8 @@ class MqttSubscriber:
 
         # Downsample check
         if self._settings.poll_store_mode == "downsample_60s":
-            last = self._last_stored.get(device_id, 0.0)
-            if now - last < 60.0:
+            last = self._last_stored.get(device_id)
+            if last is not None and now - last < 60.0:
                 return
 
         self._last_stored[device_id] = now
