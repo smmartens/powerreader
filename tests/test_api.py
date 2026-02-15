@@ -99,6 +99,31 @@ class TestAveragesEndpoint:
         assert body["days"] == 30
 
 
+class TestStatsEndpoint:
+    def test_returns_stats(self, api_client):
+        resp = api_client.get("/api/stats?device_id=meter1")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["device_id"] == "meter1"
+        assert body["avg_kwh_per_day"] is not None
+        assert body["avg_kwh_per_month"] is not None
+        assert body["kwh_this_year"] is not None
+
+    def test_empty_db_returns_nulls(self, tmp_path):
+        client = _make_empty_client(tmp_path)
+        resp = client.get("/api/stats?device_id=meter1")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["avg_kwh_per_day"] is None
+        assert body["avg_kwh_per_month"] is None
+        assert body["kwh_this_year"] is None
+
+    def test_auto_detects_device(self, api_client):
+        resp = api_client.get("/api/stats")
+        assert resp.status_code == 200
+        assert resp.json()["device_id"] == "meter1"
+
+
 class TestLogEndpoint:
     def test_returns_log_entries(self, tmp_path):
         db_path = str(tmp_path / "log.db")
