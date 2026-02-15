@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS mqtt_log (
 async def init_db(db_path: str) -> None:
     """Create tables if they don't exist."""
     async with aiosqlite.connect(db_path) as db:
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("PRAGMA busy_timeout=5000")
         await db.executescript(_SCHEMA_SQL)
 
 
@@ -69,6 +71,36 @@ async def insert_reading(
                (device_id, timestamp, total_in, total_out, power_w, voltage)
                VALUES (?, ?, ?, ?, ?, ?)""",
             (device_id, timestamp, total_in, total_out, power_w, voltage),
+        )
+        await db.commit()
+        return cursor.lastrowid  # type: ignore[return-value]
+
+
+async def insert_reading_and_log(
+    db_path: str,
+    device_id: str,
+    timestamp: str,
+    total_in: float | None = None,
+    total_out: float | None = None,
+    power_w: float | None = None,
+    voltage: float | None = None,
+    log_status: str = "ok",
+    log_summary: str | None = None,
+    log_topic: str | None = None,
+) -> int:
+    """Insert a raw reading and an MQTT log entry in a single transaction."""
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("PRAGMA busy_timeout=5000")
+        cursor = await db.execute(
+            """INSERT INTO raw_readings
+               (device_id, timestamp, total_in, total_out, power_w, voltage)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (device_id, timestamp, total_in, total_out, power_w, voltage),
+        )
+        await db.execute(
+            """INSERT INTO mqtt_log (device_id, status, summary, topic)
+               VALUES (?, ?, ?, ?)""",
+            (device_id, log_status, log_summary, log_topic),
         )
         await db.commit()
         return cursor.lastrowid  # type: ignore[return-value]

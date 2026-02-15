@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 import paho.mqtt.client as paho_mqtt
 
-from powerreader.db import insert_mqtt_log, insert_reading
+from powerreader.db import insert_mqtt_log, insert_reading_and_log
 
 if TYPE_CHECKING:
     from powerreader.config import Settings
@@ -175,7 +175,7 @@ class MqttSubscriber:
 
             if self._loop is not None:
                 asyncio.run_coroutine_threadsafe(
-                    insert_reading(
+                    insert_reading_and_log(
                         db_path=self._settings.db_path,
                         device_id=device_id,
                         timestamp=parsed["timestamp"],
@@ -183,16 +183,8 @@ class MqttSubscriber:
                         total_out=parsed.get("total_out"),
                         power_w=parsed.get("power_w"),
                         voltage=parsed.get("voltage"),
-                    ),
-                    self._loop,
-                )
-                asyncio.run_coroutine_threadsafe(
-                    insert_mqtt_log(
-                        self._settings.db_path,
-                        device_id,
-                        "ok",
-                        summary,
-                        msg.topic,
+                        log_summary=summary,
+                        log_topic=msg.topic,
                     ),
                     self._loop,
                 )

@@ -125,10 +125,9 @@ class TestMqttSubscriberDownsample:
         msg.payload = payload
         return msg
 
-    @patch("powerreader.mqtt.insert_mqtt_log", new_callable=AsyncMock)
-    @patch("powerreader.mqtt.insert_reading", new_callable=AsyncMock)
+    @patch("powerreader.mqtt.insert_reading_and_log", new_callable=AsyncMock)
     def test_store_all_mode(
-        self, mock_insert: AsyncMock, mock_log: AsyncMock, sample_tasmota_payload: bytes
+        self, mock_insert: AsyncMock, sample_tasmota_payload: bytes
     ) -> None:
         subscriber = self._make_subscriber("all")
         loop = asyncio.new_event_loop()
@@ -148,10 +147,9 @@ class TestMqttSubscriberDownsample:
         assert call_kwargs.kwargs["timestamp"] == "2024-01-15T14:30:00"
         assert call_kwargs.kwargs["power_w"] == 538.0
 
-    @patch("powerreader.mqtt.insert_mqtt_log", new_callable=AsyncMock)
-    @patch("powerreader.mqtt.insert_reading", new_callable=AsyncMock)
+    @patch("powerreader.mqtt.insert_reading_and_log", new_callable=AsyncMock)
     def test_downsample_skips_within_60s(
-        self, mock_insert: AsyncMock, mock_log: AsyncMock, sample_tasmota_payload: bytes
+        self, mock_insert: AsyncMock, sample_tasmota_payload: bytes
     ) -> None:
         subscriber = self._make_subscriber("downsample_60s")
         loop = asyncio.new_event_loop()
@@ -170,10 +168,9 @@ class TestMqttSubscriberDownsample:
 
         assert mock_insert.call_count == 1
 
-    @patch("powerreader.mqtt.insert_mqtt_log", new_callable=AsyncMock)
-    @patch("powerreader.mqtt.insert_reading", new_callable=AsyncMock)
+    @patch("powerreader.mqtt.insert_reading_and_log", new_callable=AsyncMock)
     def test_downsample_stores_after_60s(
-        self, mock_insert: AsyncMock, mock_log: AsyncMock, sample_tasmota_payload: bytes
+        self, mock_insert: AsyncMock, sample_tasmota_payload: bytes
     ) -> None:
         subscriber = self._make_subscriber("downsample_60s")
         loop = asyncio.new_event_loop()
@@ -194,10 +191,9 @@ class TestMqttSubscriberDownsample:
 
         assert mock_insert.call_count == 2
 
-    @patch("powerreader.mqtt.insert_mqtt_log", new_callable=AsyncMock)
-    @patch("powerreader.mqtt.insert_reading", new_callable=AsyncMock)
+    @patch("powerreader.mqtt.insert_reading_and_log", new_callable=AsyncMock)
     def test_downsample_per_device(
-        self, mock_insert: AsyncMock, mock_log: AsyncMock, sample_tasmota_payload: bytes
+        self, mock_insert: AsyncMock, sample_tasmota_payload: bytes
     ) -> None:
         subscriber = self._make_subscriber("downsample_60s")
         loop = asyncio.new_event_loop()
@@ -230,10 +226,9 @@ class TestMqttSubscriberDownsample:
         finally:
             loop.close()
 
-    @patch("powerreader.mqtt.insert_mqtt_log", new_callable=AsyncMock)
-    @patch("powerreader.mqtt.insert_reading", new_callable=AsyncMock)
+    @patch("powerreader.mqtt.insert_reading_and_log", new_callable=AsyncMock)
     def test_log_ok_on_valid_message(
-        self, mock_insert: AsyncMock, mock_log: AsyncMock, sample_tasmota_payload: bytes
+        self, mock_insert: AsyncMock, sample_tasmota_payload: bytes
     ) -> None:
         subscriber = self._make_subscriber("all")
         loop = asyncio.new_event_loop()
@@ -246,11 +241,11 @@ class TestMqttSubscriberDownsample:
         finally:
             loop.close()
 
-        mock_log.assert_called_once()
-        call_args = mock_log.call_args
-        assert call_args[0][2] == "ok"
-        assert "538.0W" in call_args[0][3]
-        assert "42000.5kWh" in call_args[0][3]
+        mock_insert.assert_called_once()
+        call_kwargs = mock_insert.call_args.kwargs
+        assert "538.0W" in call_kwargs["log_summary"]
+        assert "42000.5kWh" in call_kwargs["log_summary"]
+        assert call_kwargs["log_topic"] == "tele/dev1/SENSOR"
 
     @patch("powerreader.mqtt.insert_mqtt_log", new_callable=AsyncMock)
     def test_log_invalid_on_unparseable(self, mock_log: AsyncMock) -> None:
@@ -380,7 +375,7 @@ class TestDefectPayloads:
 
     @patch("powerreader.mqtt.insert_mqtt_log", new_callable=AsyncMock)
     def test_on_message_survives_insert_exception(self, mock_log: AsyncMock) -> None:
-        """_on_message should not raise even if insert_reading throws."""
+        """_on_message should not raise even if insert_reading_and_log throws."""
         settings = Settings(db_path=":memory:", mqtt_host="localhost")
         with patch("powerreader.mqtt.paho_mqtt.Client"):
             subscriber = MqttSubscriber(settings)
@@ -392,7 +387,7 @@ class TestDefectPayloads:
         msg.payload = self._payload({"total": 42000.5})
 
         with patch(
-            "powerreader.mqtt.insert_reading",
+            "powerreader.mqtt.insert_reading_and_log",
             side_effect=RuntimeError("DB exploded"),
         ):
             # Should not raise
@@ -401,7 +396,7 @@ class TestDefectPayloads:
         loop.close()
 
     @patch("powerreader.mqtt.insert_mqtt_log", new_callable=AsyncMock)
-    @patch("powerreader.mqtt.insert_reading", new_callable=AsyncMock)
+    @patch("powerreader.mqtt.insert_reading_and_log", new_callable=AsyncMock)
     def test_on_message_survives_unexpected_payload(
         self, mock_insert: AsyncMock, mock_log: AsyncMock
     ) -> None:
