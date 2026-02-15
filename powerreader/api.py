@@ -14,10 +14,13 @@ _RANGE_MAP = {
 }
 
 
+_MAX_DEVICE_ID_LEN = 64
+
+
 async def _resolve_device_id(db_path: str, device_id: str | None) -> str | None:
     """Return the given device_id, or auto-detect from the latest reading."""
     if device_id is not None:
-        return device_id
+        return device_id[:_MAX_DEVICE_ID_LEN]
     latest = await db.get_latest_reading(db_path, None)
     return latest["device_id"] if latest else None
 
