@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -83,6 +83,21 @@ async def averages(
         return {"device_id": device_id, "days": days, "data": []}
     data = await get_avg_by_time_of_day(request.app.state.db_path, resolved, days)
     return {"device_id": resolved, "days": days, "data": data}
+
+
+@router.get("/stats")
+async def consumption_stats(request: Request, device_id: str | None = None) -> dict:
+    resolved = await _resolve_device_id(request.app.state.db_path, device_id)
+    if resolved is None:
+        return {
+            "device_id": device_id,
+            "avg_kwh_per_day": None,
+            "avg_kwh_per_month": None,
+            "kwh_this_year": None,
+        }
+    year = datetime.now(UTC).year
+    stats = await db.get_consumption_stats(request.app.state.db_path, resolved, year)
+    return {"device_id": resolved, **stats}
 
 
 @router.get("/log")

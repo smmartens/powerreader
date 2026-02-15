@@ -139,6 +139,59 @@ async def get_daily_agg(
         return [dict(r) for r in await cursor.fetchall()]
 
 
+async def get_consumption_stats(db_path: str, device_id: str, year: int) -> dict:
+    """Return consumption stats: avg kWh/day, avg kWh/month, kWh this year."""
+    year_start = f"{year}-01-01"
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+
+        # Average kWh per day from daily_agg
+        cursor = await db.execute(
+            "SELECT AVG(kwh_consumed) AS avg_kwh_per_day"
+            " FROM daily_agg WHERE device_id = ?",
+            (device_id,),
+        )
+        row = await cursor.fetchone()
+        avg_day = row["avg_kwh_per_day"] if row else None
+
+        # Consumption this year: diff between first total_in on/after Jan 1
+        # (or first available) and latest total_in
+        cursor = await db.execute(
+            "SELECT total_in FROM raw_readings"
+            " WHERE device_id = ? AND timestamp >= ? AND total_in IS NOT NULL"
+            " ORDER BY timestamp ASC LIMIT 1",
+            (device_id, year_start),
+        )
+        first_row = await cursor.fetchone()
+        if first_row is None:
+            # Fall back to the very first reading available
+            cursor = await db.execute(
+                "SELECT total_in FROM raw_readings"
+                " WHERE device_id = ? AND total_in IS NOT NULL"
+                " ORDER BY timestamp ASC LIMIT 1",
+                (device_id,),
+            )
+            first_row = await cursor.fetchone()
+
+        cursor = await db.execute(
+            "SELECT total_in FROM raw_readings"
+            " WHERE device_id = ? AND total_in IS NOT NULL"
+            " ORDER BY timestamp DESC LIMIT 1",
+            (device_id,),
+        )
+        last_row = await cursor.fetchone()
+
+        kwh_year = None
+        if first_row and last_row:
+            kwh_year = last_row["total_in"] - first_row["total_in"]
+
+    return {
+        "avg_kwh_per_day": round(avg_day, 2) if avg_day is not None else None,
+        "avg_kwh_per_month": round(avg_day * 30.44, 2) if avg_day is not None else None,
+        "kwh_this_year": round(kwh_year, 2) if kwh_year is not None else None,
+    }
+
+
 async def insert_mqtt_log(
     db_path: str,
     device_id: str | None,

@@ -2,6 +2,7 @@ import aiosqlite
 import pytest
 
 from powerreader.db import (
+    get_consumption_stats,
     get_latest_reading,
     get_mqtt_log,
     get_readings,
@@ -85,6 +86,28 @@ async def test_get_readings_empty_range(initialized_db: str) -> None:
         initialized_db, "meter1", "2025-01-01T00:00:00", "2025-01-02T00:00:00"
     )
     assert readings == []
+
+
+@pytest.mark.asyncio
+async def test_consumption_stats(seeded_db: str) -> None:
+    from powerreader.aggregation import compute_daily_agg, compute_hourly_agg
+
+    await compute_hourly_agg(seeded_db)
+    await compute_daily_agg(seeded_db)
+
+    stats = await get_consumption_stats(seeded_db, "meter1", year=2024)
+    assert stats["avg_kwh_per_day"] is not None
+    assert stats["avg_kwh_per_month"] is not None
+    # Year consumption: last total_in (1105.0) - first on/after 2024-01-01 (1000.0)
+    assert stats["kwh_this_year"] == 105.0
+
+
+@pytest.mark.asyncio
+async def test_consumption_stats_empty(initialized_db: str) -> None:
+    stats = await get_consumption_stats(initialized_db, "meter1", year=2024)
+    assert stats["avg_kwh_per_day"] is None
+    assert stats["avg_kwh_per_month"] is None
+    assert stats["kwh_this_year"] is None
 
 
 @pytest.mark.asyncio

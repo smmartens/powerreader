@@ -25,10 +25,10 @@ async def test_hourly_agg_computes_correctly(seeded_db: str) -> None:
         row = dict(await cursor.fetchone())
 
     assert row["reading_count"] == 3
-    assert row["min_power_w"] == 100.0
-    assert row["max_power_w"] == 300.0
-    assert row["avg_power_w"] == pytest.approx(200.0)
-    # kWh = max(total_in) - min(total_in) = 1003.0 - 1000.0
+    assert row["min_power_w"] is None
+    assert row["max_power_w"] is None
+    # delta kWh = 1003.0 - 1000.0 = 3.0, avg_power_w = 3.0 * 1000 = 3000.0
+    assert row["avg_power_w"] == pytest.approx(3000.0)
     assert row["kwh_consumed"] == pytest.approx(3.0)
 
 
@@ -65,10 +65,10 @@ async def test_daily_agg_computes_correctly(seeded_db: str) -> None:
     assert row["reading_count"] == 5
     # kwh = 3.0 (hour 10) + 5.0 (hour 14)
     assert row["kwh_consumed"] == pytest.approx(8.0)
-    # max across hourly maxes: max(300, 600)
-    assert row["max_power_w"] == 600.0
-    # min across hourly mins: min(100, 500)
-    assert row["min_power_w"] == 100.0
+    # avg_power_w = AVG(3000.0, 5000.0) = 4000.0
+    assert row["avg_power_w"] == pytest.approx(4000.0)
+    assert row["max_power_w"] is None
+    assert row["min_power_w"] is None
 
 
 @pytest.mark.asyncio
@@ -103,9 +103,10 @@ async def test_avg_by_time_of_day(seeded_db: str) -> None:
     result = await get_avg_by_time_of_day(seeded_db, "meter1", days=999999)
 
     hours = {r["hour_of_day"]: r["avg_power_w"] for r in result}
-    # Hour 10 has 2 hourly buckets: avg_power=200.0 (day1) and avg_power=200.0 (day2)
-    assert 10 in hours
-    assert 14 in hours
+    # Hour 10: day1 delta=3kWh→3000W, day2 delta=5kWh→5000W, AVG=4000
+    assert hours[10] == pytest.approx(4000.0)
+    # Hour 14: delta=5kWh→5000W
+    assert hours[14] == pytest.approx(5000.0)
     assert len(result) == 2  # only hours 10 and 14 have data
 
 
@@ -134,7 +135,7 @@ async def test_hourly_agg_total_in_only(seeded_db_total_only: str) -> None:
 
 @pytest.mark.asyncio
 async def test_hourly_agg_mixed(initialized_db: str) -> None:
-    """When some readings have power_w, COALESCE prefers the direct AVG(power_w)."""
+    """Even when power_w is present, avg_power_w is derived from total_in delta."""
     readings = [
         # 2 readings with power_w, 1 without
         ("meter1", "2024-01-15T10:00:00", 1000.0, 0.0, 100.0, 230.0),
@@ -156,11 +157,11 @@ async def test_hourly_agg_mixed(initialized_db: str) -> None:
         )
         row = dict(await cursor.fetchone())
 
-    # AVG(power_w) = (100 + 200) / 2 = 150.0 (NULLs excluded by AVG)
-    assert row["avg_power_w"] == pytest.approx(150.0)
+    # delta kWh = 1003.0 - 1000.0 = 3.0, avg_power_w = 3.0 * 1000 = 3000.0
+    assert row["avg_power_w"] == pytest.approx(3000.0)
     assert row["kwh_consumed"] == pytest.approx(3.0)
-    assert row["max_power_w"] == 200.0
-    assert row["min_power_w"] == 100.0
+    assert row["max_power_w"] is None
+    assert row["min_power_w"] is None
 
 
 @pytest.mark.asyncio

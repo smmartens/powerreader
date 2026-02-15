@@ -78,16 +78,20 @@
         <h2>Current Reading</h2>
         <div class="readings" id="current-readings">
             <div class="reading-card">
-                <div class="value" id="cur-power">--</div>
-                <div class="label">Power (W)</div>
-            </div>
-            <div class="reading-card">
                 <div class="value" id="cur-total">--</div>
                 <div class="label">Meter (kWh)</div>
             </div>
             <div class="reading-card">
-                <div class="value" id="cur-voltage">--</div>
-                <div class="label">Voltage (V)</div>
+                <div class="value" id="stat-avg-day">--</div>
+                <div class="label">Avg / Day (kWh)</div>
+            </div>
+            <div class="reading-card">
+                <div class="value" id="stat-avg-month">--</div>
+                <div class="label">Avg / Month (kWh)</div>
+            </div>
+            <div class="reading-card">
+                <div class="value" id="stat-year">--</div>
+                <div class="label">This Year (kWh)</div>
             </div>
         </div>
         <div class="timestamp" id="cur-timestamp"></div>
@@ -136,14 +140,25 @@
                 const resp = await fetch("/api/current");
                 if (!resp.ok) return;
                 const d = await resp.json();
-                document.getElementById("cur-power").textContent =
-                    d.power_w != null ? Number(d.power_w).toFixed(0) : "--";
                 document.getElementById("cur-total").textContent =
                     d.total_in != null ? Number(d.total_in).toFixed(1) : "--";
-                document.getElementById("cur-voltage").textContent =
-                    d.voltage != null ? Number(d.voltage).toFixed(1) : "--";
                 document.getElementById("cur-timestamp").textContent =
                     d.timestamp ? "Updated: " + d.timestamp : "";
+            } catch (_) { /* silent */ }
+        }
+
+        // --- Consumption Stats ---
+        async function fetchStats() {
+            try {
+                const resp = await fetch("/api/stats");
+                if (!resp.ok) return;
+                const d = await resp.json();
+                document.getElementById("stat-avg-day").textContent =
+                    d.avg_kwh_per_day != null ? Number(d.avg_kwh_per_day).toFixed(1) : "--";
+                document.getElementById("stat-avg-month").textContent =
+                    d.avg_kwh_per_month != null ? Number(d.avg_kwh_per_month).toFixed(0) : "--";
+                document.getElementById("stat-year").textContent =
+                    d.kwh_this_year != null ? Number(d.kwh_this_year).toFixed(0) : "--";
             } catch (_) { /* silent */ }
         }
 
@@ -289,9 +304,11 @@
 
         // --- Init ---
         fetchCurrent();
+        fetchStats();
         fetchHistory(activeRange);
         fetchAverages();
         setInterval(fetchCurrent, REFRESH_MS);
+        setInterval(fetchStats, REFRESH_MS);
     </script>
 </body>
 </html>

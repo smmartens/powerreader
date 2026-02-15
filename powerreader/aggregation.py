@@ -13,13 +13,13 @@ async def compute_hourly_agg(db_path: str) -> int:
             SELECT
                 device_id,
                 strftime('%Y-%m-%dT%H', timestamp) AS hour,
-                COALESCE(AVG(power_w), (MAX(total_in) - MIN(total_in)) * 1000),
-                MAX(power_w),
-                MIN(power_w),
+                (MAX(total_in) - MIN(total_in)) * 1000,
+                NULL AS max_power_w,
+                NULL AS min_power_w,
                 MAX(total_in) - MIN(total_in),
                 COUNT(*)
             FROM raw_readings
-            WHERE total_in IS NOT NULL OR power_w IS NOT NULL
+            WHERE total_in IS NOT NULL
             GROUP BY device_id, strftime('%Y-%m-%dT%H', timestamp)
             """
         )
