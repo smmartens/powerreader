@@ -114,11 +114,14 @@ All config via environment variables (Docker-friendly):
 | `MQTT_PORT` | `1883` | MQTT broker port |
 | `MQTT_USER` | `""` | MQTT username |
 | `MQTT_PASS` | `""` | MQTT password |
+| `MQTT_TLS` | `false` | Enable TLS for MQTT broker connection |
+| `MQTT_TLS_CA` | `""` | Path to CA certificate file (optional) |
 | `MQTT_TOPIC` | `tele/+/SENSOR` | MQTT topic to subscribe |
 | `DB_PATH` | `/data/powerreader.db` | SQLite database path |
 | `POLL_STORE_MODE` | `all` | `all` = store every message, `downsample_60s` = 1/min |
 | `RAW_RETENTION_DAYS` | `30` | Days to keep raw readings |
 | `WEB_PORT` | `8080` | Dashboard port |
+| `ALLOWED_DEVICES` | `""` | Comma-separated device ID allowlist (empty = accept all) |
 
 ## Project Directory Structure (Target)
 

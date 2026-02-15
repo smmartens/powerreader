@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from powerreader.aggregation import setup_scheduler
 from powerreader.api import router as api_router
@@ -32,7 +33,21 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     subscriber.stop()
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self' 'unsafe-inline';"
+            " style-src 'self' 'unsafe-inline'"
+        )
+        return response
+
+
 app = FastAPI(title="powerreader", lifespan=lifespan)
+app.add_middleware(SecurityHeadersMiddleware)
 app.include_router(api_router)
 app.mount("/static", StaticFiles(directory=_PKG_DIR / "static"), name="static")
 

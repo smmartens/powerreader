@@ -14,9 +14,15 @@ services:
       - "8080:8080"
     environment:
       MQTT_HOST: mosquitto
+      # MQTT_USER: powerreader
+      # MQTT_PASS: secret
+      # MQTT_TLS: "true"
+      # MQTT_TLS_CA: /certs/ca.crt
       # FIELD_MAP: "total_in=LK13BE.total,total_out=LK13BE.total_out,power_w=LK13BE.current,voltage=LK13BE.voltage_l1"
+      # ALLOWED_DEVICES: "tasmota_ABC123"  # restrict to known device IDs
     volumes:
       - powerreader_data:/data
+      # - ./certs/ca.crt:/certs/ca.crt:ro  # for MQTT TLS with custom CA
 
 volumes:
   powerreader_data:

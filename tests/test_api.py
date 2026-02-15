@@ -79,7 +79,7 @@ class TestAveragesEndpoint:
         assert resp.status_code == 200
         body = resp.json()
         assert body["device_id"] == "meter1"
-        assert body["days"] == 1000
+        assert body["days"] == 1000  # within 3650 cap, passed through
         assert isinstance(body["data"], list)
         assert len(body["data"]) > 0
         assert "hour_of_day" in body["data"][0]
@@ -180,3 +180,35 @@ class TestLogPage:
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
         assert "Message Log" in resp.text
+
+
+class TestParameterClamping:
+    def test_log_limit_clamped_to_1000(self, tmp_path):
+        client = _make_empty_client(tmp_path)
+        resp = client.get("/api/log?limit=999999")
+        assert resp.status_code == 200
+
+    def test_log_limit_negative_clamped_to_1(self, tmp_path):
+        client = _make_empty_client(tmp_path)
+        resp = client.get("/api/log?limit=-5")
+        assert resp.status_code == 200
+
+    def test_averages_days_clamped_to_3650(self, tmp_path):
+        client = _make_empty_client(tmp_path)
+        resp = client.get("/api/averages?days=99999")
+        assert resp.status_code == 200
+        assert resp.json()["days"] == 3650
+
+
+class TestSecurityHeaders:
+    def test_security_headers_present(self, api_client):
+        resp = api_client.get("/api/version")
+        assert resp.headers["X-Content-Type-Options"] == "nosniff"
+        assert resp.headers["X-Frame-Options"] == "DENY"
+        assert resp.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+        assert "default-src 'self'" in resp.headers["Content-Security-Policy"]
+
+    def test_html_pages_have_security_headers(self, api_client):
+        resp = api_client.get("/")
+        assert resp.headers["X-Frame-Options"] == "DENY"
+        assert "Content-Security-Policy" in resp.headers

@@ -102,6 +102,12 @@
     <script>
         const REFRESH_MS = 30000;
 
+        function escapeHtml(s) {
+            const el = document.createElement("div");
+            el.textContent = s;
+            return el.innerHTML;
+        }
+
         function statusClass(s) {
             if (s === "invalid") return "status-invalid";
             if (s === "error") return "status-error";
@@ -127,11 +133,11 @@
 
                 tbody.innerHTML = rows.map(r =>
                     `<tr>
-                        <td>${r.timestamp || ""}</td>
-                        <td class="${statusClass(r.status)}">${r.status}</td>
-                        <td>${r.device_id || ""}</td>
-                        <td>${r.summary || ""}</td>
-                        <td>${r.topic || ""}</td>
+                        <td>${escapeHtml(r.timestamp || "")}</td>
+                        <td class="${statusClass(r.status)}">${escapeHtml(r.status || "")}</td>
+                        <td>${escapeHtml(r.device_id || "")}</td>
+                        <td>${escapeHtml(r.summary || "")}</td>
+                        <td>${escapeHtml(r.topic || "")}</td>
                     </tr>`
                 ).join("");
             } catch (_) { /* silent */ }

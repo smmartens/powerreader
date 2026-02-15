@@ -6,6 +6,8 @@ import asyncio
 import json
 import logging
 import math
+import re
+import ssl
 import time
 from typing import TYPE_CHECKING
 
@@ -18,6 +20,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]", re.ASCII)
+
+
+def _sanitize(value: str, max_len: int) -> str:
+    """Truncate to *max_len* and strip control characters (except space)."""
+    value = value[:max_len]
+    return _CONTROL_CHAR_RE.sub("", value)
+
+
 # Default field mapping for Tasmota LK13BE payloads.
 DEFAULT_FIELD_MAP: dict[str, str] = {
     "total_in": "LK13BE.total",
@@ -25,6 +37,17 @@ DEFAULT_FIELD_MAP: dict[str, str] = {
     "power_w": "LK13BE.current",
     "voltage": "LK13BE.voltage_l1",
 }
+
+
+def parse_allowed_devices(raw: str) -> set[str]:
+    """Parse a comma-separated list of allowed device IDs.
+
+    Returns an empty set if the string is empty (meaning all devices
+    are accepted).
+    """
+    if not raw.strip():
+        return set()
+    return {d.strip() for d in raw.split(",") if d.strip()}
 
 
 def parse_field_map(raw: str) -> dict[str, str]:
@@ -86,7 +109,11 @@ def parse_tasmota_message(
     if timestamp is None:
         return None
 
-    result: dict[str, str | float | None] = {"timestamp": str(timestamp)}
+    timestamp = _sanitize(str(timestamp), 32)
+    if not _TIMESTAMP_RE.match(timestamp):
+        return None
+
+    result: dict[str, str | float | None] = {"timestamp": timestamp}
     for key, path in field_map.items():
         result[key] = _resolve_dotted(data, path)
 
@@ -95,10 +122,10 @@ def parse_tasmota_message(
 
 def extract_device_id(topic: str) -> str:
     """Extract the device ID from a topic like 'tele/<device_id>/SENSOR'."""
+    topic = _sanitize(topic, 256)
     parts = topic.split("/")
-    if len(parts) >= 3:
-        return parts[1]
-    return topic
+    raw = parts[1] if len(parts) >= 3 else topic
+    return _sanitize(raw, 64)
 
 
 class MqttSubscriber:
@@ -107,11 +134,18 @@ class MqttSubscriber:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._field_map = parse_field_map(settings.field_map)
+        self._allowed_devices = parse_allowed_devices(settings.allowed_devices)
         self._client = paho_mqtt.Client(
             callback_api_version=paho_mqtt.CallbackAPIVersion.VERSION2
         )
         if settings.mqtt_user:
             self._client.username_pw_set(settings.mqtt_user, settings.mqtt_pass)
+        if settings.mqtt_tls:
+            ca_certs = settings.mqtt_tls_ca or None
+            self._client.tls_set(
+                ca_certs=ca_certs,
+                tls_version=ssl.PROTOCOL_TLS_CLIENT,
+            )
         self._client.on_connect = self._on_connect
         self._client.on_message = self._on_message
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -135,10 +169,16 @@ class MqttSubscriber:
         msg: paho_mqtt.MQTTMessage,
     ) -> None:
         try:
+            device_id = extract_device_id(msg.topic)
+
+            # Allowlist check — drop messages from unknown devices
+            if self._allowed_devices and device_id not in self._allowed_devices:
+                logger.debug("Ignoring device %s (not in allowlist)", device_id)
+                return
+
             parsed = parse_tasmota_message(msg.payload, field_map=self._field_map)
             if parsed is None:
                 logger.debug("Skipping unparseable message on %s", msg.topic)
-                device_id = extract_device_id(msg.topic)
                 if self._loop is not None:
                     asyncio.run_coroutine_threadsafe(
                         insert_mqtt_log(
@@ -151,8 +191,6 @@ class MqttSubscriber:
                         self._loop,
                     )
                 return
-
-            device_id = extract_device_id(msg.topic)
             now = time.monotonic()
 
             # Downsample check
@@ -171,7 +209,7 @@ class MqttSubscriber:
                 parts.append(f"{parsed['total_in']}kWh")
             if parsed.get("voltage") is not None:
                 parts.append(f"{parsed['voltage']}V")
-            summary = ", ".join(parts) if parts else None
+            summary = _sanitize(", ".join(parts), 256) if parts else None
 
             if self._loop is not None:
                 asyncio.run_coroutine_threadsafe(
