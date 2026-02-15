@@ -81,6 +81,24 @@ async def seeded_db(initialized_db: str) -> str:
 
 
 @pytest.fixture
+async def seeded_db_total_only(initialized_db: str) -> str:
+    """DB with raw_readings that only have total_in (no power_w/voltage)."""
+    from powerreader.db import insert_reading
+
+    readings = [
+        # Hour 10: total_in goes from 1000.0 to 1003.0 => 3 kWh delta
+        ("meter1", "2024-01-15T10:00:00", 1000.0, 0.0, None, None),
+        ("meter1", "2024-01-15T10:20:00", 1001.0, 0.0, None, None),
+        ("meter1", "2024-01-15T10:40:00", 1003.0, 0.0, None, None),
+    ]
+    for device_id, ts, total_in, total_out, power_w, voltage in readings:
+        await insert_reading(
+            initialized_db, device_id, ts, total_in, total_out, power_w, voltage
+        )
+    return initialized_db
+
+
+@pytest.fixture
 async def api_db(seeded_db: str) -> str:
     """Seeded DB with hourly and daily aggregates pre-computed."""
     from powerreader.aggregation import compute_daily_agg, compute_hourly_agg

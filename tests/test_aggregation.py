@@ -110,6 +110,60 @@ async def test_avg_by_time_of_day(seeded_db: str) -> None:
 
 
 @pytest.mark.asyncio
+async def test_hourly_agg_total_in_only(seeded_db_total_only: str) -> None:
+    """Aggregation derives avg_power_w from kWh delta when power_w is NULL."""
+    count = await compute_hourly_agg(seeded_db_total_only)
+    assert count == 1
+
+    async with aiosqlite.connect(seeded_db_total_only) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM hourly_agg"
+            " WHERE hour = '2024-01-15T10' AND device_id = 'meter1'"
+        )
+        row = dict(await cursor.fetchone())
+
+    assert row["reading_count"] == 3
+    # delta kWh = 1003.0 - 1000.0 = 3.0, avg_power_w = 3.0 * 1000 = 3000.0
+    assert row["avg_power_w"] == pytest.approx(3000.0)
+    assert row["kwh_consumed"] == pytest.approx(3.0)
+    # No direct power_w readings, so min/max should be NULL
+    assert row["max_power_w"] is None
+    assert row["min_power_w"] is None
+
+
+@pytest.mark.asyncio
+async def test_hourly_agg_mixed(initialized_db: str) -> None:
+    """When some readings have power_w, COALESCE prefers the direct AVG(power_w)."""
+    readings = [
+        # 2 readings with power_w, 1 without
+        ("meter1", "2024-01-15T10:00:00", 1000.0, 0.0, 100.0, 230.0),
+        ("meter1", "2024-01-15T10:20:00", 1001.0, 0.0, 200.0, 231.0),
+        ("meter1", "2024-01-15T10:40:00", 1003.0, 0.0, None, None),
+    ]
+    for device_id, ts, total_in, total_out, power_w, voltage in readings:
+        await insert_reading(
+            initialized_db, device_id, ts, total_in, total_out, power_w, voltage
+        )
+
+    await compute_hourly_agg(initialized_db)
+
+    async with aiosqlite.connect(initialized_db) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM hourly_agg"
+            " WHERE hour = '2024-01-15T10' AND device_id = 'meter1'"
+        )
+        row = dict(await cursor.fetchone())
+
+    # AVG(power_w) = (100 + 200) / 2 = 150.0 (NULLs excluded by AVG)
+    assert row["avg_power_w"] == pytest.approx(150.0)
+    assert row["kwh_consumed"] == pytest.approx(3.0)
+    assert row["max_power_w"] == 200.0
+    assert row["min_power_w"] == 100.0
+
+
+@pytest.mark.asyncio
 async def test_hourly_agg_idempotent(seeded_db: str) -> None:
     """Running aggregation twice should not create duplicates."""
     await compute_hourly_agg(seeded_db)
