@@ -15,16 +15,37 @@ A self-hosted power consumption monitor that subscribes to MQTT messages from a 
 
 ## Quick Start
 
-1. Clone the repository and start the stack:
+1. Create a directory on your device and download the production compose file:
    ```bash
-   git clone https://github.com/smmartens/powerreader.git
-   cd powerreader
-   docker compose up -d
+   mkdir powerreader && cd powerreader
+   curl -O https://raw.githubusercontent.com/smmartens/powerreader/main/docker-compose.prod.yml
+   curl -O https://raw.githubusercontent.com/smmartens/powerreader/main/mosquitto/mosquitto.conf
    ```
 
-2. Configure your Tasmota device to publish to the Mosquitto broker at `<host-ip>:1883`.
+2. Start the stack:
+   ```bash
+   docker compose -f docker-compose.prod.yml up -d
+   ```
 
-3. Open the dashboard at [http://localhost:8080](http://localhost:8080).
+3. Configure your Tasmota device to publish to the Mosquitto broker at `<host-ip>:1883`.
+
+4. Open the dashboard at [http://localhost:8080](http://localhost:8080).
+
+### Updating
+
+```bash
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
+
+### Building from source
+
+Alternatively, clone the repository and build locally:
+```bash
+git clone https://github.com/smmartens/powerreader.git
+cd powerreader
+docker compose up -d
+```
 
 ## Configuration
 
@@ -170,6 +191,20 @@ uv run ruff format .
 # Install pre-commit hooks (ruff + pytest)
 uv run pre-commit install
 ```
+
+## Releasing
+
+To publish a new version:
+
+1. Update the version in `pyproject.toml`
+2. Commit and push to `main`
+3. Tag and push the release:
+   ```bash
+   git tag v1.1.0
+   git push origin v1.1.0
+   ```
+
+The GitHub Actions release workflow automatically builds the Docker image and pushes it to `ghcr.io/smmartens/powerreader` with tags for the version (`v1.1.0`, `1.1`) and `latest`.
 
 ## License
 

@@ -1,0 +1,28 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+
+  powerreader:
+    image: ghcr.io/smmartens/powerreader:latest
+    depends_on:
+      - mosquitto
+    ports:
+      - "8080:8080"
+    environment:
+      MQTT_HOST: mosquitto
+      # MQTT_USER: powerreader
+      # MQTT_PASS: secret
+      # MQTT_TLS: "true"
+      # MQTT_TLS_CA: /certs/ca.crt
+      # FIELD_MAP: "total_in=LK13BE.total,total_out=LK13BE.total_out,power_w=LK13BE.current,voltage=LK13BE.voltage_l1"
+      # ALLOWED_DEVICES: "tasmota_ABC123"
+    volumes:
+      - powerreader_data:/data
+      # - ./certs/ca.crt:/certs/ca.crt:ro
+
+volumes:
+  powerreader_data:
