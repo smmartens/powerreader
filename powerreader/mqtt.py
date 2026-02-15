@@ -148,9 +148,24 @@ class MqttSubscriber:
             )
         self._client.reconnect_delay_set(min_delay=1, max_delay=60)
         self._client.on_connect = self._on_connect
+        self._client.on_disconnect = self._on_disconnect
         self._client.on_message = self._on_message
         self._loop: asyncio.AbstractEventLoop | None = None
         self._last_stored: dict[str, float] = {}
+
+    def _log_event(self, status: str, summary: str) -> None:
+        """Insert an MQTT log entry from a callback thread."""
+        if self._loop is not None:
+            asyncio.run_coroutine_threadsafe(
+                insert_mqtt_log(
+                    self._settings.db_path,
+                    None,
+                    status,
+                    summary,
+                    None,
+                ),
+                self._loop,
+            )
 
     def _on_connect(
         self,
@@ -162,6 +177,18 @@ class MqttSubscriber:
     ) -> None:
         logger.info("Connected to MQTT broker (rc=%s)", rc)
         client.subscribe(self._settings.mqtt_topic)
+        self._log_event("ok", f"connected to broker (rc={rc})")
+
+    def _on_disconnect(
+        self,
+        client: paho_mqtt.Client,
+        userdata: object,
+        disconnect_flags: paho_mqtt.DisconnectFlags,
+        rc: paho_mqtt.ReasonCode,
+        properties: paho_mqtt.Properties | None = None,
+    ) -> None:
+        logger.warning("Disconnected from MQTT broker (rc=%s)", rc)
+        self._log_event("error", f"disconnected from broker (rc={rc})")
 
     def _on_message(
         self,
