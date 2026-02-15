@@ -59,6 +59,8 @@ async def history(
             start.strftime("%Y-%m-%d"),
             now.strftime("%Y-%m-%d"),
         )
+        for row in data:
+            row["bucket"] = row["date"]
     else:
         data = await db.get_hourly_agg(
             request.app.state.db_path,
@@ -66,6 +68,8 @@ async def history(
             start.strftime("%Y-%m-%dT%H"),
             now.strftime("%Y-%m-%dT%H"),
         )
+        for row in data:
+            row["bucket"] = row["hour"]
 
     return {"range": range, "data": data}
 
