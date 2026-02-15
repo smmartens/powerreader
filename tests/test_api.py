@@ -43,6 +43,9 @@ class TestHistoryEndpoint:
         body = resp.json()
         assert body["range"] == "24h"
         assert isinstance(body["data"], list)
+        if body["data"]:
+            assert "bucket" in body["data"][0]
+            assert body["data"][0]["bucket"] == body["data"][0]["hour"]
 
     def test_7d_returns_hourly_agg(self, api_client):
         resp = api_client.get("/api/history?device_id=meter1&range=7d")
@@ -55,6 +58,9 @@ class TestHistoryEndpoint:
         body = resp.json()
         assert body["range"] == "30d"
         assert isinstance(body["data"], list)
+        if body["data"]:
+            assert "bucket" in body["data"][0]
+            assert body["data"][0]["bucket"] == body["data"][0]["date"]
 
     def test_invalid_range_returns_400(self, api_client):
         resp = api_client.get("/api/history?range=99d")
