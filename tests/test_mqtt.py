@@ -308,6 +308,50 @@ class TestMqttSubscriberOnConnect:
             subscriber._on_connect(mock_client, None, flags, rc)
             mock_client.subscribe.assert_called_once_with("tele/+/SENSOR")
 
+    @patch("powerreader.mqtt.insert_mqtt_log", new_callable=AsyncMock)
+    def test_on_connect_logs_event(self, mock_log: AsyncMock) -> None:
+        settings = Settings(db_path=":memory:", mqtt_host="localhost")
+        with patch("powerreader.mqtt.paho_mqtt.Client") as mock_cls:
+            subscriber = MqttSubscriber(settings)
+        loop = asyncio.new_event_loop()
+        subscriber._loop = loop
+
+        flags = MagicMock()
+        rc = MagicMock()
+        rc.__str__ = lambda self: "Success"
+        try:
+            subscriber._on_connect(mock_cls.return_value, None, flags, rc)
+            loop.run_until_complete(asyncio.sleep(0.05))
+        finally:
+            loop.close()
+
+        mock_log.assert_called_once()
+        call_args = mock_log.call_args
+        assert call_args[0][2] == "ok"
+        assert "connected" in call_args[0][3]
+
+    @patch("powerreader.mqtt.insert_mqtt_log", new_callable=AsyncMock)
+    def test_on_disconnect_logs_event(self, mock_log: AsyncMock) -> None:
+        settings = Settings(db_path=":memory:", mqtt_host="localhost")
+        with patch("powerreader.mqtt.paho_mqtt.Client") as mock_cls:
+            subscriber = MqttSubscriber(settings)
+        loop = asyncio.new_event_loop()
+        subscriber._loop = loop
+
+        disconnect_flags = MagicMock()
+        rc = MagicMock()
+        rc.__str__ = lambda self: "Connection lost"
+        try:
+            subscriber._on_disconnect(mock_cls.return_value, None, disconnect_flags, rc)
+            loop.run_until_complete(asyncio.sleep(0.05))
+        finally:
+            loop.close()
+
+        mock_log.assert_called_once()
+        call_args = mock_log.call_args
+        assert call_args[0][2] == "error"
+        assert "disconnected" in call_args[0][3]
+
 
 class TestMqttTls:
     def test_tls_not_set_by_default(self) -> None:
