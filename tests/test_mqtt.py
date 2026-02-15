@@ -309,6 +309,38 @@ class TestMqttSubscriberOnConnect:
             mock_client.subscribe.assert_called_once_with("tele/+/SENSOR")
 
 
+class TestMqttTls:
+    def test_tls_not_set_by_default(self) -> None:
+        settings = Settings(db_path=":memory:", mqtt_host="localhost")
+        with patch("powerreader.mqtt.paho_mqtt.Client") as mock_cls:
+            mock_client = mock_cls.return_value
+            MqttSubscriber(settings)
+            mock_client.tls_set.assert_not_called()
+
+    def test_tls_enabled_without_ca(self) -> None:
+        settings = Settings(db_path=":memory:", mqtt_host="localhost", mqtt_tls=True)
+        with patch("powerreader.mqtt.paho_mqtt.Client") as mock_cls:
+            mock_client = mock_cls.return_value
+            MqttSubscriber(settings)
+            mock_client.tls_set.assert_called_once()
+            call_kwargs = mock_client.tls_set.call_args
+            assert call_kwargs.kwargs["ca_certs"] is None
+
+    def test_tls_enabled_with_ca(self) -> None:
+        settings = Settings(
+            db_path=":memory:",
+            mqtt_host="localhost",
+            mqtt_tls=True,
+            mqtt_tls_ca="/certs/ca.crt",
+        )
+        with patch("powerreader.mqtt.paho_mqtt.Client") as mock_cls:
+            mock_client = mock_cls.return_value
+            MqttSubscriber(settings)
+            mock_client.tls_set.assert_called_once()
+            call_kwargs = mock_client.tls_set.call_args
+            assert call_kwargs.kwargs["ca_certs"] == "/certs/ca.crt"
+
+
 class TestDefectPayloads:
     """Tests for edge-case and defective MQTT payloads."""
 

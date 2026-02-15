@@ -36,6 +36,8 @@ All configuration is via environment variables (set in `docker-compose.yml` or `
 | `MQTT_PORT` | `1883` | MQTT broker port |
 | `MQTT_USER` | `""` | MQTT username |
 | `MQTT_PASS` | `""` | MQTT password |
+| `MQTT_TLS` | `false` | Enable TLS for the MQTT broker connection |
+| `MQTT_TLS_CA` | `""` | Path to CA certificate file (optional, uses system CAs if empty) |
 | `MQTT_TOPIC` | `tele/+/SENSOR` | MQTT topic to subscribe |
 | `DB_PATH` | `/data/powerreader.db` | SQLite database path |
 | `POLL_STORE_MODE` | `all` | `all` = store every message, `downsample_60s` = 1/min |
@@ -90,8 +92,39 @@ Powerreader is designed for trusted local networks but includes several hardenin
 - **Security headers** — Responses include `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, and `Referrer-Policy`.
 - **SQL injection** — All database queries use parameterized statements.
 - **Non-root container** — The Docker image runs as an unprivileged user (`appuser`, UID 1000).
+- **MQTT TLS** — Optional encrypted connection to the MQTT broker. Set `MQTT_TLS=true` and optionally provide a CA certificate via `MQTT_TLS_CA`.
+- **MQTT authentication** — Set `MQTT_USER` and `MQTT_PASS` to authenticate with the broker. Configure matching credentials on the Tasmota device under MQTT settings.
 - **Device allowlist** — Set `ALLOWED_DEVICES` to restrict which device IDs are accepted. Messages from unknown devices are silently dropped before any database write.
 - **API parameter clamping** — Query parameters like `limit` and `days` are clamped to safe ranges to prevent resource exhaustion.
+
+### MQTT TLS
+
+To encrypt MQTT traffic between all clients and the broker:
+
+1. Enable TLS on the Tasmota device (MQTT configuration page, check "TLS").
+
+2. Configure Mosquitto with a TLS listener (e.g. using Let's Encrypt or a self-signed CA):
+   ```
+   listener 8883
+   certfile /mosquitto/certs/server.crt
+   keyfile /mosquitto/certs/server.key
+   cafile /mosquitto/certs/ca.crt
+   ```
+
+3. Set the powerreader environment:
+   ```yaml
+   environment:
+     MQTT_HOST: mosquitto
+     MQTT_PORT: 8883
+     MQTT_TLS: "true"
+     # MQTT_TLS_CA: /certs/ca.crt  # only needed for self-signed CAs
+   ```
+
+4. If using a custom CA, mount the certificate into the container:
+   ```yaml
+   volumes:
+     - ./certs/ca.crt:/certs/ca.crt:ro
+   ```
 
 ### Mosquitto Broker ACLs
 

@@ -6,6 +6,8 @@ class Settings(BaseSettings):
     mqtt_port: int = 1883
     mqtt_user: str = ""
     mqtt_pass: str = ""
+    mqtt_tls: bool = False
+    mqtt_tls_ca: str = ""
     mqtt_topic: str = "tele/+/SENSOR"
     db_path: str = "/data/powerreader.db"
     poll_store_mode: str = "all"

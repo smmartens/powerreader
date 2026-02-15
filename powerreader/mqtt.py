@@ -7,6 +7,7 @@ import json
 import logging
 import math
 import re
+import ssl
 import time
 from typing import TYPE_CHECKING
 
@@ -139,6 +140,12 @@ class MqttSubscriber:
         )
         if settings.mqtt_user:
             self._client.username_pw_set(settings.mqtt_user, settings.mqtt_pass)
+        if settings.mqtt_tls:
+            ca_certs = settings.mqtt_tls_ca or None
+            self._client.tls_set(
+                ca_certs=ca_certs,
+                tls_version=ssl.PROTOCOL_TLS_CLIENT,
+            )
         self._client.on_connect = self._on_connect
         self._client.on_message = self._on_message
         self._loop: asyncio.AbstractEventLoop | None = None
