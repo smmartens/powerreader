@@ -12,9 +12,9 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
 COPY powerreader/ powerreader/
+COPY entrypoint.sh /entrypoint.sh
 
-USER appuser
 EXPOSE 8080
 VOLUME /data
 
-CMD ["uv", "run", "--no-sync", "uvicorn", "powerreader.main:app", "--host", "0.0.0.0", "--port", "8080"]
+ENTRYPOINT ["/entrypoint.sh"]
