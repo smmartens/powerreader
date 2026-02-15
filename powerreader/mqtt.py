@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import math
+import re
 import time
 from typing import TYPE_CHECKING
 
@@ -17,6 +18,16 @@ if TYPE_CHECKING:
     from powerreader.config import Settings
 
 logger = logging.getLogger(__name__)
+
+_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]", re.ASCII)
+
+
+def _sanitize(value: str, max_len: int) -> str:
+    """Truncate to *max_len* and strip control characters (except space)."""
+    value = value[:max_len]
+    return _CONTROL_CHAR_RE.sub("", value)
+
 
 # Default field mapping for Tasmota LK13BE payloads.
 DEFAULT_FIELD_MAP: dict[str, str] = {
@@ -86,7 +97,11 @@ def parse_tasmota_message(
     if timestamp is None:
         return None
 
-    result: dict[str, str | float | None] = {"timestamp": str(timestamp)}
+    timestamp = _sanitize(str(timestamp), 32)
+    if not _TIMESTAMP_RE.match(timestamp):
+        return None
+
+    result: dict[str, str | float | None] = {"timestamp": timestamp}
     for key, path in field_map.items():
         result[key] = _resolve_dotted(data, path)
 
@@ -95,10 +110,10 @@ def parse_tasmota_message(
 
 def extract_device_id(topic: str) -> str:
     """Extract the device ID from a topic like 'tele/<device_id>/SENSOR'."""
+    topic = _sanitize(topic, 256)
     parts = topic.split("/")
-    if len(parts) >= 3:
-        return parts[1]
-    return topic
+    raw = parts[1] if len(parts) >= 3 else topic
+    return _sanitize(raw, 64)
 
 
 class MqttSubscriber:
@@ -171,7 +186,7 @@ class MqttSubscriber:
                 parts.append(f"{parsed['total_in']}kWh")
             if parsed.get("voltage") is not None:
                 parts.append(f"{parsed['voltage']}V")
-            summary = ", ".join(parts) if parts else None
+            summary = _sanitize(", ".join(parts), 256) if parts else None
 
             if self._loop is not None:
                 asyncio.run_coroutine_threadsafe(

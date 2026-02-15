@@ -370,8 +370,27 @@ class TestDefectPayloads:
 
     def test_empty_time_field(self) -> None:
         result = parse_tasmota_message(self._payload({"total": 100}, time=""))
+        assert result is None
+
+    def test_html_in_timestamp_rejected(self) -> None:
+        result = parse_tasmota_message(
+            self._payload({"total": 100}, time="<script>alert(1)</script>")
+        )
+        assert result is None
+
+    def test_long_topic_truncated(self) -> None:
+        long_topic = "tele/" + "A" * 1000 + "/SENSOR"
+        device_id = extract_device_id(long_topic)
+        assert len(device_id) <= 64
+
+    def test_control_chars_stripped(self) -> None:
+        result = parse_tasmota_message(
+            self._payload({"total": 100}, time="2024-01-15T14:30:00\x00\x01\x02")
+        )
         assert result is not None
-        assert result["timestamp"] == ""
+        assert "\x00" not in result["timestamp"]
+        assert "\x01" not in result["timestamp"]
+        assert result["timestamp"] == "2024-01-15T14:30:00"
 
     @patch("powerreader.mqtt.insert_mqtt_log", new_callable=AsyncMock)
     def test_on_message_survives_insert_exception(self, mock_log: AsyncMock) -> None:
