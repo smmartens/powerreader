@@ -9,6 +9,7 @@ from powerreader.db import (
     init_db,
     insert_mqtt_log,
     insert_reading,
+    insert_reading_and_log,
 )
 
 
@@ -86,6 +87,27 @@ async def test_get_readings_empty_range(initialized_db: str) -> None:
         initialized_db, "meter1", "2025-01-01T00:00:00", "2025-01-02T00:00:00"
     )
     assert readings == []
+
+
+@pytest.mark.asyncio
+async def test_insert_reading_and_log(initialized_db: str) -> None:
+    """Both reading and log are written in a single transaction."""
+    await insert_reading_and_log(
+        initialized_db,
+        device_id="meter1",
+        timestamp="2024-01-15T10:00:00",
+        total_in=1000.0,
+        log_summary="1000.0kWh",
+        log_topic="tele/meter1/SENSOR",
+    )
+    reading = await get_latest_reading(initialized_db, "meter1")
+    assert reading is not None
+    assert reading["total_in"] == 1000.0
+
+    logs = await get_mqtt_log(initialized_db)
+    assert len(logs) == 1
+    assert logs[0]["status"] == "ok"
+    assert logs[0]["summary"] == "1000.0kWh"
 
 
 @pytest.mark.asyncio
