@@ -119,6 +119,7 @@ All config via environment variables (Docker-friendly):
 | `POLL_STORE_MODE` | `all` | `all` = store every message, `downsample_60s` = 1/min |
 | `RAW_RETENTION_DAYS` | `30` | Days to keep raw readings |
 | `WEB_PORT` | `8080` | Dashboard port |
+| `ALLOWED_DEVICES` | `""` | Comma-separated device ID allowlist (empty = accept all) |
 
 ## Project Directory Structure (Target)
 

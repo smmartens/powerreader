@@ -12,6 +12,7 @@ from powerreader.mqtt import (
     MqttSubscriber,
     _resolve_dotted,
     extract_device_id,
+    parse_allowed_devices,
     parse_field_map,
     parse_tasmota_message,
 )
@@ -432,3 +433,100 @@ class TestDefectPayloads:
         # Should not raise
         subscriber._on_message(subscriber._client, None, msg)
         subscriber._loop.close()
+
+
+class TestParseAllowedDevices:
+    def test_empty_string_returns_empty_set(self) -> None:
+        assert parse_allowed_devices("") == set()
+        assert parse_allowed_devices("  ") == set()
+
+    def test_single_device(self) -> None:
+        assert parse_allowed_devices("meter1") == {"meter1"}
+
+    def test_multiple_devices(self) -> None:
+        result = parse_allowed_devices("meter1, meter2, meter3")
+        assert result == {"meter1", "meter2", "meter3"}
+
+    def test_strips_whitespace(self) -> None:
+        result = parse_allowed_devices(" meter1 , meter2 ")
+        assert result == {"meter1", "meter2"}
+
+    def test_ignores_empty_entries(self) -> None:
+        result = parse_allowed_devices("meter1,,meter2,")
+        assert result == {"meter1", "meter2"}
+
+
+class TestDeviceAllowlist:
+    def _make_subscriber(self, allowed: str = "") -> MqttSubscriber:
+        settings = Settings(
+            db_path=":memory:",
+            mqtt_host="localhost",
+            allowed_devices=allowed,
+        )
+        with patch("powerreader.mqtt.paho_mqtt.Client"):
+            return MqttSubscriber(settings)
+
+    @patch("powerreader.mqtt.insert_reading_and_log", new_callable=AsyncMock)
+    def test_allowed_device_accepted(
+        self, mock_insert: AsyncMock, sample_tasmota_payload: bytes
+    ) -> None:
+        subscriber = self._make_subscriber("dev1,dev2")
+        loop = asyncio.new_event_loop()
+        subscriber._loop = loop
+
+        msg = MagicMock()
+        msg.topic = "tele/dev1/SENSOR"
+        msg.payload = sample_tasmota_payload
+
+        try:
+            subscriber._on_message(subscriber._client, None, msg)
+            loop.run_until_complete(asyncio.sleep(0.05))
+        finally:
+            loop.close()
+
+        mock_insert.assert_called_once()
+
+    @patch("powerreader.mqtt.insert_reading_and_log", new_callable=AsyncMock)
+    @patch("powerreader.mqtt.insert_mqtt_log", new_callable=AsyncMock)
+    def test_unknown_device_rejected(
+        self,
+        mock_log: AsyncMock,
+        mock_insert: AsyncMock,
+        sample_tasmota_payload: bytes,
+    ) -> None:
+        subscriber = self._make_subscriber("meter1")
+        loop = asyncio.new_event_loop()
+        subscriber._loop = loop
+
+        msg = MagicMock()
+        msg.topic = "tele/rogue/SENSOR"
+        msg.payload = sample_tasmota_payload
+
+        try:
+            subscriber._on_message(subscriber._client, None, msg)
+            loop.run_until_complete(asyncio.sleep(0.05))
+        finally:
+            loop.close()
+
+        mock_insert.assert_not_called()
+        mock_log.assert_not_called()
+
+    @patch("powerreader.mqtt.insert_reading_and_log", new_callable=AsyncMock)
+    def test_empty_allowlist_accepts_all(
+        self, mock_insert: AsyncMock, sample_tasmota_payload: bytes
+    ) -> None:
+        subscriber = self._make_subscriber("")
+        loop = asyncio.new_event_loop()
+        subscriber._loop = loop
+
+        msg = MagicMock()
+        msg.topic = "tele/anything/SENSOR"
+        msg.payload = sample_tasmota_payload
+
+        try:
+            subscriber._on_message(subscriber._client, None, msg)
+            loop.run_until_complete(asyncio.sleep(0.05))
+        finally:
+            loop.close()
+
+        mock_insert.assert_called_once()

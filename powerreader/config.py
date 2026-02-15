@@ -12,3 +12,4 @@ class Settings(BaseSettings):
     raw_retention_days: int = 30
     web_port: int = 8080
     field_map: str = ""
+    allowed_devices: str = ""

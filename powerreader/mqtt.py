@@ -38,6 +38,17 @@ DEFAULT_FIELD_MAP: dict[str, str] = {
 }
 
 
+def parse_allowed_devices(raw: str) -> set[str]:
+    """Parse a comma-separated list of allowed device IDs.
+
+    Returns an empty set if the string is empty (meaning all devices
+    are accepted).
+    """
+    if not raw.strip():
+        return set()
+    return {d.strip() for d in raw.split(",") if d.strip()}
+
+
 def parse_field_map(raw: str) -> dict[str, str]:
     """Parse a comma-separated field mapping string.
 
@@ -122,6 +133,7 @@ class MqttSubscriber:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._field_map = parse_field_map(settings.field_map)
+        self._allowed_devices = parse_allowed_devices(settings.allowed_devices)
         self._client = paho_mqtt.Client(
             callback_api_version=paho_mqtt.CallbackAPIVersion.VERSION2
         )
@@ -150,10 +162,16 @@ class MqttSubscriber:
         msg: paho_mqtt.MQTTMessage,
     ) -> None:
         try:
+            device_id = extract_device_id(msg.topic)
+
+            # Allowlist check — drop messages from unknown devices
+            if self._allowed_devices and device_id not in self._allowed_devices:
+                logger.debug("Ignoring device %s (not in allowlist)", device_id)
+                return
+
             parsed = parse_tasmota_message(msg.payload, field_map=self._field_map)
             if parsed is None:
                 logger.debug("Skipping unparseable message on %s", msg.topic)
-                device_id = extract_device_id(msg.topic)
                 if self._loop is not None:
                     asyncio.run_coroutine_threadsafe(
                         insert_mqtt_log(
@@ -166,8 +184,6 @@ class MqttSubscriber:
                         self._loop,
                     )
                 return
-
-            device_id = extract_device_id(msg.topic)
             now = time.monotonic()
 
             # Downsample check

@@ -1,0 +1,21 @@
+# Mosquitto ACL example for powerreader
+#
+# Setup:
+#   1. Create a password file:
+#      docker exec mosquitto mosquitto_passwd -c /mosquitto/config/passwd tasmota
+#      docker exec mosquitto mosquitto_passwd /mosquitto/config/passwd powerreader
+#
+#   2. Copy this file to mosquitto.acl and update mosquitto.conf:
+#      allow_anonymous false
+#      password_file /mosquitto/config/passwd
+#      acl_file /mosquitto/config/mosquitto.acl
+#
+#   3. Restart the mosquitto container.
+
+# Tasmota device: can only publish to its own tele topic
+user tasmota
+topic write tele/+/SENSOR
+
+# Powerreader app: can only read sensor topics
+user powerreader
+topic read tele/+/SENSOR
