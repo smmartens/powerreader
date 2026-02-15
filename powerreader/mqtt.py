@@ -146,6 +146,7 @@ class MqttSubscriber:
                 ca_certs=ca_certs,
                 tls_version=ssl.PROTOCOL_TLS_CLIENT,
             )
+        self._client.reconnect_delay_set(min_delay=1, max_delay=60)
         self._client.on_connect = self._on_connect
         self._client.on_message = self._on_message
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -242,18 +243,30 @@ class MqttSubscriber:
                 )
 
     def start(self, loop: asyncio.AbstractEventLoop) -> None:
-        """Connect to broker and start the network loop in a background thread."""
+        """Connect to broker and start the network loop in a background thread.
+
+        If the broker is unreachable, paho-mqtt will keep retrying
+        automatically via ``loop_start`` — the app stays up.
+        """
         self._loop = loop
-        self._client.connect(
-            self._settings.mqtt_host,
-            self._settings.mqtt_port,
-        )
         self._client.loop_start()
-        logger.info(
-            "MQTT subscriber started (host=%s, topic=%s)",
-            self._settings.mqtt_host,
-            self._settings.mqtt_topic,
-        )
+        try:
+            self._client.connect(
+                self._settings.mqtt_host,
+                self._settings.mqtt_port,
+            )
+            logger.info(
+                "MQTT subscriber started (host=%s, topic=%s)",
+                self._settings.mqtt_host,
+                self._settings.mqtt_topic,
+            )
+        except OSError:
+            logger.warning(
+                "MQTT broker unreachable (host=%s, port=%s), "
+                "will keep retrying in the background",
+                self._settings.mqtt_host,
+                self._settings.mqtt_port,
+            )
 
     def stop(self) -> None:
         """Stop the network loop and disconnect."""
