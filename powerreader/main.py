@@ -62,6 +62,11 @@ async def log_page(request: Request) -> HTMLResponse:
     return _templates.TemplateResponse(request, "log.html")
 
 
+@app.get("/export", response_class=HTMLResponse)
+async def export_page(request: Request) -> HTMLResponse:
+    return _templates.TemplateResponse(request, "export.html")
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}

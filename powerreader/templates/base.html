@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Powerreader{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <header>
+        <h1>Powerreader</h1>
+        <nav><a href="/">Dashboard</a> | <a href="/log">Message Log</a> | <a href="/export">Export</a></nav>
+    </header>
+
+    {% block content %}{% endblock %}
+
+    <footer>
+        <span id="footer-version">Powerreader</span>
+        <span>
+            <a href="https://github.com/smmartens" target="_blank">smmartens</a>
+            &middot;
+            <a href="https://github.com/smmartens/powerreader" target="_blank">GitHub</a>
+        </span>
+    </footer>
+
+    <script src="/static/common.js"></script>
+    {% block scripts %}{% endblock %}
+    <script>initVersionFooter();</script>
+</body>
+</html>

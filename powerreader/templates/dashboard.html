@@ -1,10 +1,8 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Powerreader Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css">
+{% extends "base.html" %}
+
+{% block title %}Powerreader Dashboard{% endblock %}
+
+{% block head %}
     <style>
         .readings {
             display: grid;
@@ -37,13 +35,9 @@
         .chart-container { position: relative; width: 100%; max-height: 350px; }
         .timestamp { font-size: 0.75rem; color: #5a6a8a; text-align: right; margin-top: 0.5rem; }
     </style>
-</head>
-<body>
-    <header>
-        <h1>Powerreader</h1>
-        <nav><a href="/log">Message Log</a></nav>
-    </header>
+{% endblock %}
 
+{% block content %}
     <div class="panel" id="current-panel">
         <h2>Current Reading</h2>
         <div class="readings" id="current-readings">
@@ -87,18 +81,10 @@
         </div>
         <div class="no-data" id="avg-no-data" style="display:none;">No average data available.</div>
     </div>
+{% endblock %}
 
-    <footer>
-        <span id="footer-version">Powerreader</span>
-        <span>
-            <a href="https://github.com/smmartens" target="_blank">smmartens</a>
-            &middot;
-            <a href="https://github.com/smmartens/powerreader" target="_blank">GitHub</a>
-        </span>
-    </footer>
-
+{% block scripts %}
     <script src="/static/chart.umd.min.js"></script>
-    <script src="/static/common.js"></script>
     <script>
         let historyChart = null;
         let avgChart = null;
@@ -262,7 +248,6 @@
         });
 
         // --- Init ---
-        initVersionFooter();
         fetchCurrent();
         fetchStats();
         fetchHistory(activeRange);
@@ -270,5 +255,4 @@
         setInterval(fetchCurrent, REFRESH_MS);
         setInterval(fetchStats, REFRESH_MS);
     </script>
-</body>
-</html>
+{% endblock %}

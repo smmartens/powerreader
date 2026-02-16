@@ -176,6 +176,29 @@ async def get_hourly_agg(
         return await _fetch_all(cursor)
 
 
+async def get_hourly_agg_by_hour_of_day(
+    db_path: str, device_id: str, start: str, end: str
+) -> list[dict]:
+    """Aggregate hourly_agg rows by hour-of-day (0-23) within a date range."""
+    async with _connect(db_path, row_factory=True) as db:
+        cursor = await db.execute(
+            """SELECT
+                CAST(strftime('%H', hour || ':00:00') AS INTEGER) AS hour_of_day,
+                ROUND(AVG(avg_power_w), 1) AS avg_power_w,
+                ROUND(MAX(max_power_w), 1) AS max_power_w,
+                ROUND(MIN(min_power_w), 1) AS min_power_w,
+                ROUND(SUM(kwh_consumed), 3) AS total_kwh,
+                SUM(reading_count) AS reading_count,
+                COUNT(*) AS days_covered
+            FROM hourly_agg
+            WHERE device_id = ? AND hour >= ? AND hour <= ?
+            GROUP BY hour_of_day
+            ORDER BY hour_of_day""",
+            (device_id, start, end),
+        )
+        return await _fetch_all(cursor)
+
+
 async def get_daily_agg(
     db_path: str, device_id: str, start: str, end: str
 ) -> list[dict]:

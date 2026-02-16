@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Powerreader - Export{% endblock %}
+
+{% block head %}
+    <style>
+        .export-form { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; }
+        .form-group { display: flex; flex-direction: column; gap: 0.25rem; }
+        .form-group label { color: #8892b0; font-size: 0.85rem; }
+        .form-group input, .form-group select {
+            background: #0f3460;
+            color: #e0e0e0;
+            border: 1px solid #1a5276;
+            padding: 0.4rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        .btn-download {
+            background: #00d4ff;
+            color: #1a1a2e;
+            border: none;
+            padding: 0.5rem 1.2rem;
+            border-radius: 4px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .btn-download:hover { background: #00b8d9; }
+        .error-msg { color: #e74c3c; font-size: 0.85rem; margin-top: 0.5rem; display: none; }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <div class="panel">
+        <h2>Export Data</h2>
+        <div class="export-form">
+            <div class="form-group">
+                <label for="start-date">Start Date</label>
+                <input type="date" id="start-date">
+            </div>
+            <div class="form-group">
+                <label for="end-date">End Date</label>
+                <input type="date" id="end-date">
+            </div>
+            <div class="form-group">
+                <label for="report-type">Report</label>
+                <select id="report-type">
+                    <option value="hourly">Hourly Consumption</option>
+                </select>
+            </div>
+            <button class="btn-download" id="download-btn">Download CSV</button>
+        </div>
+        <div class="error-msg" id="error-msg"></div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <script>
+        // Default dates: yesterday to today
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        document.getElementById("end-date").value = today.toISOString().slice(0, 10);
+        document.getElementById("start-date").value = yesterday.toISOString().slice(0, 10);
+
+        document.getElementById("download-btn").addEventListener("click", () => {
+            const start = document.getElementById("start-date").value;
+            const end = document.getElementById("end-date").value;
+            const report = document.getElementById("report-type").value;
+            const errEl = document.getElementById("error-msg");
+
+            if (!start || !end) {
+                errEl.textContent = "Please select both start and end dates.";
+                errEl.style.display = "block";
+                return;
+            }
+            if (start > end) {
+                errEl.textContent = "Start date must not be after end date.";
+                errEl.style.display = "block";
+                return;
+            }
+            errEl.style.display = "none";
+            window.location = "/api/export?start=" + start + "&end=" + end + "&report=" + report;
+        });
+    </script>
+{% endblock %}
