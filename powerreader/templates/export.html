@@ -80,7 +80,8 @@
                 return;
             }
             errEl.style.display = "none";
-            window.location = "/api/export?start=" + start + "&end=" + end + "&report=" + report;
+            const params = new URLSearchParams({start, end, report});
+            window.location = "/api/export?" + params.toString();
         });
     </script>
 {% endblock %}
