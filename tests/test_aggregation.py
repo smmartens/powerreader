@@ -25,8 +25,6 @@ async def test_hourly_agg_computes_correctly(seeded_db: str) -> None:
         row = dict(await cursor.fetchone())
 
     assert row["reading_count"] == 3
-    assert row["min_power_w"] is None
-    assert row["max_power_w"] is None
     # delta kWh = 1003.0 - 1000.0 = 3.0, avg_power_w = 3.0 * 1000 = 3000.0
     assert row["avg_power_w"] == pytest.approx(3000.0)
     assert row["kwh_consumed"] == pytest.approx(3.0)
@@ -72,8 +70,6 @@ async def test_daily_agg_computes_correctly(seeded_db: str) -> None:
     assert row["kwh_consumed"] == pytest.approx(8.0)
     # avg_power_w = AVG(3000.0, 5000.0) = 4000.0
     assert row["avg_power_w"] == pytest.approx(4000.0)
-    assert row["max_power_w"] is None
-    assert row["min_power_w"] is None
 
 
 @pytest.mark.asyncio
@@ -133,9 +129,6 @@ async def test_hourly_agg_total_in_only(seeded_db_total_only: str) -> None:
     # delta kWh = 1003.0 - 1000.0 = 3.0, avg_power_w = 3.0 * 1000 = 3000.0
     assert row["avg_power_w"] == pytest.approx(3000.0)
     assert row["kwh_consumed"] == pytest.approx(3.0)
-    # No direct power_w readings, so min/max should be NULL
-    assert row["max_power_w"] is None
-    assert row["min_power_w"] is None
 
 
 @pytest.mark.asyncio
@@ -165,8 +158,6 @@ async def test_hourly_agg_mixed(initialized_db: str) -> None:
     # delta kWh = 1003.0 - 1000.0 = 3.0, avg_power_w = 3.0 * 1000 = 3000.0
     assert row["avg_power_w"] == pytest.approx(3000.0)
     assert row["kwh_consumed"] == pytest.approx(3.0)
-    assert row["max_power_w"] is None
-    assert row["min_power_w"] is None
 
 
 @pytest.mark.asyncio

@@ -125,8 +125,6 @@ async def mqtt_log(request: Request, limit: int = 200) -> dict:
 _CSV_COLUMNS_HOURLY = [
     "hour_of_day",
     "avg_power_w",
-    "max_power_w",
-    "min_power_w",
     "total_kwh",
     "reading_count",
     "days_covered",

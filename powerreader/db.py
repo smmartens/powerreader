@@ -20,8 +20,6 @@ CREATE TABLE IF NOT EXISTS hourly_agg (
     device_id TEXT NOT NULL,
     hour TEXT NOT NULL,
     avg_power_w REAL,
-    max_power_w REAL,
-    min_power_w REAL,
     kwh_consumed REAL,
     reading_count INTEGER,
     coverage_seconds INTEGER,
@@ -33,8 +31,6 @@ CREATE TABLE IF NOT EXISTS daily_agg (
     device_id TEXT NOT NULL,
     date TEXT NOT NULL,
     avg_power_w REAL,
-    max_power_w REAL,
-    min_power_w REAL,
     kwh_consumed REAL,
     reading_count INTEGER,
     UNIQUE(device_id, date)
@@ -194,8 +190,6 @@ async def get_hourly_agg_by_hour_of_day(
             """SELECT
                 CAST(strftime('%H', hour || ':00:00') AS INTEGER) AS hour_of_day,
                 ROUND(AVG(avg_power_w), 1) AS avg_power_w,
-                ROUND(MAX(max_power_w), 1) AS max_power_w,
-                ROUND(MIN(min_power_w), 1) AS min_power_w,
                 ROUND(SUM(kwh_consumed), 3) AS total_kwh,
                 SUM(reading_count) AS reading_count,
                 COUNT(*) AS days_covered,

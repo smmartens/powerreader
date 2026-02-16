@@ -140,7 +140,7 @@ The export page (`/export`) lets you download power consumption data as a CSV fi
 
 | Report | Description | Columns |
 |---|---|---|
-| `hourly` | Average consumption by hour of day (0–23), aggregated across all days in the range | `hour_of_day`, `avg_power_w`, `max_power_w`, `min_power_w`, `total_kwh`, `reading_count`, `days_covered` |
+| `hourly` | Average consumption by hour of day (0–23), aggregated across all days in the range | `hour_of_day`, `avg_power_w`, `total_kwh`, `reading_count`, `days_covered`, `avg_coverage_seconds` |
 
 **API usage:**
 
@@ -153,11 +153,11 @@ Returns a CSV file download. The `device_id` parameter is optional — if omitte
 **Example output:**
 
 ```csv
-hour_of_day,avg_power_w,max_power_w,min_power_w,total_kwh,reading_count,days_covered
-0,185.3,210.0,160.5,5.559,930,31
-1,172.1,195.0,150.0,5.163,930,31
+hour_of_day,avg_power_w,total_kwh,reading_count,days_covered,avg_coverage_seconds
+0,185.3,5.559,930,31,3540
+1,172.1,5.163,930,31,3540
 ...
-23,195.8,220.0,170.0,5.874,930,31
+23,195.8,5.874,930,31,3540
 ```
 
 ## Security

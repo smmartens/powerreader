@@ -219,8 +219,8 @@ class TestExportEndpoint:
         )
         lines = resp.text.strip().splitlines()
         expected = (
-            "hour_of_day,avg_power_w,max_power_w,"
-            "min_power_w,total_kwh,reading_count,days_covered,"
+            "hour_of_day,avg_power_w,"
+            "total_kwh,reading_count,days_covered,"
             "avg_coverage_seconds"
         )
         assert lines[0] == expected
@@ -236,8 +236,8 @@ class TestExportEndpoint:
         # First data row is hour 10, aggregated from 2 days
         assert lines[1].startswith("10,")
         cols = lines[1].split(",")
-        assert cols[6] == "2"  # days_covered = 2
-        assert cols[7] is not None  # avg_coverage_seconds present
+        assert cols[4] == "2"  # days_covered = 2
+        assert cols[5] is not None  # avg_coverage_seconds present
 
     def test_empty_range_returns_header_only(self, api_client):
         resp = api_client.get(
