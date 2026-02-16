@@ -19,6 +19,7 @@ Any Tasmota-compatible device that publishes SML or ENERGY data via MQTT will wo
 - Web dashboard with Chart.js visualizations (24h/7d/30d views)
 - Downsample mode to reduce storage (store every message or 1/min)
 - Multi-meter ready via `device_id` column
+- CSV data export with custom date ranges
 - Single-container deployment with Docker
 
 ## Quick Start
@@ -132,6 +133,34 @@ The calculation is straightforward:
 | `GET` | `/api/version` | Application version |
 | `GET` | `/log` | Message log page |
 | `GET` | `/export` | Export page |
+
+## CSV Export
+
+The export page (`/export`) lets you download power consumption data as a CSV file for a custom date range.
+
+**Available reports:**
+
+| Report | Description | Columns |
+|---|---|---|
+| `hourly` | Average consumption by hour of day (0–23), aggregated across all days in the range | `hour_of_day`, `avg_power_w`, `max_power_w`, `min_power_w`, `total_kwh`, `reading_count`, `days_covered` |
+
+**API usage:**
+
+```
+GET /api/export?start=2024-01-01&end=2024-01-31&report=hourly
+```
+
+Returns a CSV file download. The `device_id` parameter is optional — if omitted, the most recently active device is used. The date range is capped at 10 years.
+
+**Example output:**
+
+```csv
+hour_of_day,avg_power_w,max_power_w,min_power_w,total_kwh,reading_count,days_covered
+0,185.3,210.0,160.5,5.559,930,31
+1,172.1,195.0,150.0,5.163,930,31
+...
+23,195.8,220.0,170.0,5.874,930,31
+```
 
 ## Security
 
