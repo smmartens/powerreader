@@ -123,6 +123,15 @@ All config via environment variables (Docker-friendly):
 | `WEB_PORT` | `8080` | Dashboard port |
 | `ALLOWED_DEVICES` | `""` | Comma-separated device ID allowlist (empty = accept all) |
 
+## Branching Strategy
+
+Trunk-based development:
+
+- **`main`** is the only long-lived branch. All CI runs on `main` and PRs targeting `main`.
+- Create short-lived **topic branches** off `main` for each change (e.g. `fix/mqtt-reconnect`, `feat/tls-support`).
+- Open a PR to `main`, get CI green, merge, delete the branch.
+- Releases are triggered by pushing a `v*` tag to `main`.
+
 ## Project Directory Structure (Target)
 
 ```
@@ -150,53 +159,3 @@ powerreader/
     └── test_api.py
 ```
 
-## Implementation Plan
-
-### Phase 1: Project Skeleton
-- [ ] 1. Set up `pyproject.toml` with UV, declare dependencies (fastapi, uvicorn, paho-mqtt, aiosqlite, apscheduler, jinja2, ruff, pytest, pytest-cov, pre-commit)
-- [ ] 2. Configure ruff in `pyproject.toml` and set up `.pre-commit-config.yaml` (ruff + pytest hooks)
-- [ ] 3. Create `tests/conftest.py` with initial shared fixtures
-- [ ] 4. Create `powerreader/config.py` — Pydantic `Settings` class reading env vars
-- [ ] 5. Create `powerreader/main.py` — minimal FastAPI app with health endpoint
-- [ ] 6. Create `Dockerfile` (Python 3.12 slim, UV install, volume at `/data`)
-- [ ] 7. Verify: `docker build` + `docker run` + hit health endpoint
-
-### Phase 2: Database Layer
-- [ ] 6. Create `powerreader/db.py` — SQLite schema (raw_readings, hourly_agg, daily_agg) with device_id column
-- [ ] 7. Auto-create tables on startup
-- [ ] 8. Write insert/query helpers for raw readings
-- [ ] 9. Tests for DB layer
-
-### Phase 3: MQTT Subscriber
-- [ ] 10. Create `powerreader/mqtt.py` — connect to broker, subscribe to topic, parse Tasmota JSON
-- [ ] 11. Configurable field mapping (which JSON keys = total_kwh, power_w, etc.)
-- [ ] 12. Downsample logic (store all vs. 1/min)
-- [ ] 13. Start MQTT client as background task on FastAPI startup
-- [ ] 14. Tests with mocked MQTT messages
-
-### Phase 4: Aggregation & Retention
-- [ ] 15. Create `powerreader/aggregation.py` — compute hourly/daily averages from raw data
-- [ ] 16. Calculate consumption deltas (kWh difference between readings)
-- [ ] 17. Average-by-time-of-day calculation (e.g. "average power at 11:00")
-- [ ] 18. Scheduled job to prune raw readings older than `RAW_RETENTION_DAYS`
-- [ ] 19. Wire APScheduler into FastAPI lifespan
-- [ ] 20. Tests for aggregation math
-
-### Phase 5: REST API
-- [ ] 21. Create `powerreader/api.py` — endpoints:
-  - `GET /api/current` — latest reading
-  - `GET /api/history?range=24h|7d|30d` — time-series data
-  - `GET /api/averages?granularity=hourly` — avg by time-of-day
-- [ ] 22. Tests for API endpoints
-
-### Phase 6: Web Dashboard
-- [ ] 23. Create `powerreader/templates/dashboard.html` — single-page dashboard
-- [ ] 24. Current power + meter reading display
-- [ ] 25. Line chart: consumption over time (24h / 7d / 30d toggle)
-- [ ] 26. Bar chart: average consumption by hour-of-day
-- [ ] 27. Auto-refresh via periodic fetch
-
-### Phase 7: Polish & Deploy
-- [ ] 28. Docker Compose example with Mosquitto broker
-- [ ] 29. README with setup instructions
-- [ ] 30. CI: GitHub Actions for lint + tests

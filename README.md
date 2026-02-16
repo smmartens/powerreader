@@ -219,6 +219,16 @@ uv run ruff format .
 uv run pre-commit install
 ```
 
+### Branching Strategy
+
+This project uses **trunk-based development**:
+
+- **`main`** is the single long-lived branch. All work lands here.
+- Create short-lived **feature/fix branches** off `main` for each change (e.g. `fix/mqtt-reconnect`, `feat/tls-support`).
+- Open a **pull request** to `main`. CI runs lint + tests on every PR.
+- **Merge and delete** the branch once the PR is approved.
+- No long-lived `dev` or `release` branches.
+
 ## Releasing
 
 To publish a new version:
