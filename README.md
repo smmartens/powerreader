@@ -1,4 +1,4 @@
-# powerreader
+# <img src="docs/logo.png" alt="logo" width="32"> powerreader
 
 A self-hosted power consumption monitor that subscribes to MQTT messages from a Tasmota-flashed ESP32C3 connected to a smart power meter, stores readings in SQLite, computes consumption analytics, and serves a web dashboard — all in a single Docker container.
 

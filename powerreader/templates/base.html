@@ -4,12 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Powerreader{% endblock %}</title>
+    <link rel="icon" type="image/png" sizes="48x48" href="/static/favicon-48.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
     <link rel="stylesheet" href="/static/style.css">
     {% block head %}{% endblock %}
 </head>
 <body>
     <header>
-        <h1>Powerreader</h1>
+        <h1><img src="/static/logo.png" alt="Powerreader" class="header-logo">Powerreader</h1>
         <nav><a href="/">Dashboard</a> | <a href="/log">Message Log</a> | <a href="/export">Export</a></nav>
     </header>
 
