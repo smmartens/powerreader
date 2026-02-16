@@ -1,7 +1,7 @@
 import csv
 import io
 from collections.abc import AsyncIterator
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from starlette.responses import StreamingResponse
@@ -108,7 +108,7 @@ async def consumption_stats(request: Request, device_id: str | None = None) -> d
             "avg_kwh_per_month": None,
             "kwh_this_year": None,
         }
-    year = datetime.now(UTC).year
+    year = datetime.now().year
     stats = await db.get_consumption_stats(request.app.state.db_path, resolved, year)
     return {"device_id": resolved, **stats}
 

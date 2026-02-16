@@ -56,7 +56,8 @@ async def prune_raw_readings(db_path: str, retention_days: int) -> int:
     """Delete raw readings older than retention_days. Returns rows deleted."""
     async with _connect(db_path) as db:
         cursor = await db.execute(
-            "DELETE FROM raw_readings WHERE timestamp < datetime('now', ?)",
+            "DELETE FROM raw_readings"
+            " WHERE timestamp < datetime('now', 'localtime', ?)",
             (f"-{retention_days} days",),
         )
         await db.commit()
@@ -75,7 +76,7 @@ async def get_avg_by_time_of_day(
                 AVG(avg_power_w) AS avg_power_w
             FROM hourly_agg
             WHERE device_id = ?
-              AND hour >= strftime('%Y-%m-%dT%H', datetime('now', ?))
+              AND hour >= strftime('%Y-%m-%dT%H', datetime('now', 'localtime', ?))
             GROUP BY hour_of_day
             ORDER BY hour_of_day
             """,
@@ -88,7 +89,7 @@ async def prune_mqtt_log(db_path: str, retention_days: int) -> int:
     """Delete mqtt_log entries older than retention_days. Returns rows deleted."""
     async with _connect(db_path) as db:
         cursor = await db.execute(
-            "DELETE FROM mqtt_log WHERE timestamp < datetime('now', ?)",
+            "DELETE FROM mqtt_log WHERE timestamp < datetime('now', 'localtime', ?)",
             (f"-{retention_days} days",),
         )
         await db.commit()
