@@ -10,7 +10,7 @@ async def compute_hourly_agg(db_path: str) -> int:
             """
             INSERT OR REPLACE INTO hourly_agg
                 (device_id, hour, avg_power_w, max_power_w, min_power_w,
-                 kwh_consumed, reading_count)
+                 kwh_consumed, reading_count, coverage_seconds)
             SELECT
                 device_id,
                 strftime('%Y-%m-%dT%H', timestamp) AS hour,
@@ -18,7 +18,11 @@ async def compute_hourly_agg(db_path: str) -> int:
                 NULL AS max_power_w,
                 NULL AS min_power_w,
                 MAX(total_in) - MIN(total_in),
-                COUNT(*)
+                COUNT(*),
+                CAST(
+                    strftime('%s', MAX(timestamp))
+                    - strftime('%s', MIN(timestamp))
+                AS INTEGER)
             FROM raw_readings
             WHERE total_in IS NOT NULL
             GROUP BY device_id, strftime('%Y-%m-%dT%H', timestamp)

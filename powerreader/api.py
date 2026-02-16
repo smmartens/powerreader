@@ -130,6 +130,7 @@ _CSV_COLUMNS_HOURLY = [
     "total_kwh",
     "reading_count",
     "days_covered",
+    "avg_coverage_seconds",
 ]
 
 

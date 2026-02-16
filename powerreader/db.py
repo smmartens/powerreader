@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS hourly_agg (
     min_power_w REAL,
     kwh_consumed REAL,
     reading_count INTEGER,
+    coverage_seconds INTEGER,
     UNIQUE(device_id, hour)
 );
 
@@ -83,6 +84,14 @@ async def init_db(db_path: str) -> None:
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA busy_timeout=5000")
         await db.executescript(_SCHEMA_SQL)
+        # Migration: add coverage_seconds to existing hourly_agg tables
+        try:
+            await db.execute(
+                "ALTER TABLE hourly_agg ADD COLUMN coverage_seconds INTEGER"
+            )
+            await db.commit()
+        except Exception:  # noqa: BLE001
+            pass  # Column already exists
 
 
 async def insert_reading(
@@ -189,7 +198,8 @@ async def get_hourly_agg_by_hour_of_day(
                 ROUND(MIN(min_power_w), 1) AS min_power_w,
                 ROUND(SUM(kwh_consumed), 3) AS total_kwh,
                 SUM(reading_count) AS reading_count,
-                COUNT(*) AS days_covered
+                COUNT(*) AS days_covered,
+                ROUND(AVG(coverage_seconds), 0) AS avg_coverage_seconds
             FROM hourly_agg
             WHERE device_id = ? AND hour >= ? AND hour <= ?
             GROUP BY hour_of_day
