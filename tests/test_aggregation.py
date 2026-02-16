@@ -25,11 +25,11 @@ async def test_hourly_agg_computes_correctly(seeded_db: str) -> None:
         row = dict(await cursor.fetchone())
 
     assert row["reading_count"] == 3
-    assert row["min_power_w"] is None
-    assert row["max_power_w"] is None
     # delta kWh = 1003.0 - 1000.0 = 3.0, avg_power_w = 3.0 * 1000 = 3000.0
     assert row["avg_power_w"] == pytest.approx(3000.0)
     assert row["kwh_consumed"] == pytest.approx(3.0)
+    # Readings at T10:00, T10:20, T10:40 → coverage = 40*60 = 2400s
+    assert row["coverage_seconds"] == 2400
 
 
 @pytest.mark.asyncio
@@ -40,12 +40,15 @@ async def test_hourly_agg_kwh_delta(seeded_db: str) -> None:
     async with aiosqlite.connect(seeded_db) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT kwh_consumed FROM hourly_agg WHERE hour = '2024-01-15T14'"
+            "SELECT kwh_consumed, coverage_seconds FROM hourly_agg"
+            " WHERE hour = '2024-01-15T14'"
         )
         row = dict(await cursor.fetchone())
 
     # 1015.0 - 1010.0 = 5.0
     assert row["kwh_consumed"] == pytest.approx(5.0)
+    # Readings at T14:00, T14:30 → coverage = 30*60 = 1800s
+    assert row["coverage_seconds"] == 1800
 
 
 @pytest.mark.asyncio
@@ -67,8 +70,6 @@ async def test_daily_agg_computes_correctly(seeded_db: str) -> None:
     assert row["kwh_consumed"] == pytest.approx(8.0)
     # avg_power_w = AVG(3000.0, 5000.0) = 4000.0
     assert row["avg_power_w"] == pytest.approx(4000.0)
-    assert row["max_power_w"] is None
-    assert row["min_power_w"] is None
 
 
 @pytest.mark.asyncio
@@ -128,9 +129,6 @@ async def test_hourly_agg_total_in_only(seeded_db_total_only: str) -> None:
     # delta kWh = 1003.0 - 1000.0 = 3.0, avg_power_w = 3.0 * 1000 = 3000.0
     assert row["avg_power_w"] == pytest.approx(3000.0)
     assert row["kwh_consumed"] == pytest.approx(3.0)
-    # No direct power_w readings, so min/max should be NULL
-    assert row["max_power_w"] is None
-    assert row["min_power_w"] is None
 
 
 @pytest.mark.asyncio
@@ -160,8 +158,6 @@ async def test_hourly_agg_mixed(initialized_db: str) -> None:
     # delta kWh = 1003.0 - 1000.0 = 3.0, avg_power_w = 3.0 * 1000 = 3000.0
     assert row["avg_power_w"] == pytest.approx(3000.0)
     assert row["kwh_consumed"] == pytest.approx(3.0)
-    assert row["max_power_w"] is None
-    assert row["min_power_w"] is None
 
 
 @pytest.mark.asyncio
@@ -194,6 +190,25 @@ async def test_daily_agg_idempotent(seeded_db: str) -> None:
 async def test_avg_by_time_of_day_empty(initialized_db: str) -> None:
     result = await get_avg_by_time_of_day(initialized_db, "meter1")
     assert result == []
+
+
+@pytest.mark.asyncio
+async def test_hourly_agg_single_reading_coverage_zero(initialized_db: str) -> None:
+    """A single reading in a bucket should have coverage_seconds = 0."""
+    await insert_reading(
+        initialized_db, "meter1", "2024-01-15T12:00:00", 2000.0, 0.0, 400.0, 230.0
+    )
+    await compute_hourly_agg(initialized_db)
+
+    async with aiosqlite.connect(initialized_db) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT coverage_seconds FROM hourly_agg"
+            " WHERE hour = '2024-01-15T12' AND device_id = 'meter1'"
+        )
+        row = dict(await cursor.fetchone())
+
+    assert row["coverage_seconds"] == 0
 
 
 @pytest.mark.asyncio

@@ -9,16 +9,18 @@ async def compute_hourly_agg(db_path: str) -> int:
         cursor = await db.execute(
             """
             INSERT OR REPLACE INTO hourly_agg
-                (device_id, hour, avg_power_w, max_power_w, min_power_w,
-                 kwh_consumed, reading_count)
+                (device_id, hour, avg_power_w,
+                 kwh_consumed, reading_count, coverage_seconds)
             SELECT
                 device_id,
                 strftime('%Y-%m-%dT%H', timestamp) AS hour,
                 (MAX(total_in) - MIN(total_in)) * 1000,
-                NULL AS max_power_w,
-                NULL AS min_power_w,
                 MAX(total_in) - MIN(total_in),
-                COUNT(*)
+                COUNT(*),
+                CAST(
+                    strftime('%s', MAX(timestamp))
+                    - strftime('%s', MIN(timestamp))
+                AS INTEGER)
             FROM raw_readings
             WHERE total_in IS NOT NULL
             GROUP BY device_id, strftime('%Y-%m-%dT%H', timestamp)
@@ -34,14 +36,12 @@ async def compute_daily_agg(db_path: str) -> int:
         cursor = await db.execute(
             """
             INSERT OR REPLACE INTO daily_agg
-                (device_id, date, avg_power_w, max_power_w, min_power_w,
+                (device_id, date, avg_power_w,
                  kwh_consumed, reading_count)
             SELECT
                 device_id,
                 substr(hour, 1, 10) AS date,
                 AVG(avg_power_w),
-                MAX(max_power_w),
-                MIN(min_power_w),
                 SUM(kwh_consumed),
                 SUM(reading_count)
             FROM hourly_agg
