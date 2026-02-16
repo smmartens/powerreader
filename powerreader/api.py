@@ -1,6 +1,10 @@
-from datetime import UTC, datetime, timedelta
+import csv
+import io
+from collections.abc import AsyncIterator
+from datetime import UTC, date, datetime, timedelta
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
+from starlette.responses import StreamingResponse
 
 from powerreader import __version__, db
 from powerreader.aggregation import get_avg_by_time_of_day
@@ -15,6 +19,11 @@ _RANGE_MAP = {
 
 
 _MAX_DEVICE_ID_LEN = 64
+
+
+def _clamp(value: int, lo: int, hi: int) -> int:
+    """Clamp *value* to [lo, hi]."""
+    return max(lo, min(value, hi))
 
 
 async def _resolve_device_id(db_path: str, device_id: str | None) -> str | None:
@@ -81,7 +90,7 @@ async def history(
 async def averages(
     request: Request, device_id: str | None = None, days: int = 30
 ) -> dict:
-    days = max(1, min(days, 3650))
+    days = _clamp(days, 1, 3650)
     resolved = await _resolve_device_id(request.app.state.db_path, device_id)
     if resolved is None:
         return {"device_id": device_id, "days": days, "data": []}
@@ -106,6 +115,101 @@ async def consumption_stats(request: Request, device_id: str | None = None) -> d
 
 @router.get("/log")
 async def mqtt_log(request: Request, limit: int = 200) -> dict:
-    limit = max(1, min(limit, 1000))
+    limit = _clamp(limit, 1, 1000)
     data = await db.get_mqtt_log(request.app.state.db_path, limit=limit)
     return {"data": data}
+
+
+# --- CSV Export ---
+
+_CSV_COLUMNS_HOURLY = [
+    "hour_of_day",
+    "avg_power_w",
+    "max_power_w",
+    "min_power_w",
+    "total_kwh",
+    "reading_count",
+    "days_covered",
+]
+
+
+_MAX_EXPORT_DAYS = 3650
+
+
+def _parse_date(value: str) -> date:
+    """Parse a YYYY-MM-DD string into a date, or raise 400."""
+    try:
+        return date.fromisoformat(value[:10])
+    except (ValueError, TypeError) as err:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid date format: '{value[:10]}'. Use YYYY-MM-DD.",
+        ) from err
+
+
+async def _generate_hourly_csv(
+    db_path: str, device_id: str, start: date, end: date
+) -> AsyncIterator[str]:
+    """Yield CSV rows aggregated by hour-of-day (0-23)."""
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(_CSV_COLUMNS_HOURLY)
+    yield buf.getvalue()
+    buf.seek(0)
+    buf.truncate()
+
+    start_hour = start.isoformat() + "T00"
+    end_hour = end.isoformat() + "T23"
+    rows = await db.get_hourly_agg_by_hour_of_day(
+        db_path, device_id, start_hour, end_hour
+    )
+    for row in rows:
+        writer.writerow([row.get(col) for col in _CSV_COLUMNS_HOURLY])
+        yield buf.getvalue()
+        buf.seek(0)
+        buf.truncate()
+
+
+_REPORT_GENERATORS = {
+    "hourly": _generate_hourly_csv,
+}
+
+
+@router.get("/export")
+async def export_csv(
+    request: Request,
+    start: str = Query(...),
+    end: str = Query(...),
+    report: str = Query("hourly"),
+    device_id: str | None = None,
+) -> StreamingResponse:
+    if report not in _REPORT_GENERATORS:
+        valid = ", ".join(sorted(_REPORT_GENERATORS))
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid report type '{report}'. Must be one of: {valid}",
+        )
+
+    start_date = _parse_date(start)
+    end_date = _parse_date(end)
+    if start_date > end_date:
+        raise HTTPException(
+            status_code=400, detail="start date must not be after end date"
+        )
+    if (end_date - start_date).days > _MAX_EXPORT_DAYS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Date range must not exceed {_MAX_EXPORT_DAYS} days",
+        )
+
+    resolved = await _resolve_device_id(request.app.state.db_path, device_id)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="No device found")
+
+    generator = _REPORT_GENERATORS[report]
+    filename = f"powerreader_{report}_{start_date}_{end_date}.csv"
+    return StreamingResponse(
+        generator(request.app.state.db_path, resolved, start_date, end_date),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

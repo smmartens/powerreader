@@ -1,28 +1,9 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Powerreader Dashboard</title>
+{% extends "base.html" %}
+
+{% block title %}Powerreader Dashboard{% endblock %}
+
+{% block head %}
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #1a1a2e;
-            color: #e0e0e0;
-            padding: 1rem;
-        }
-        header { display: flex; justify-content: center; align-items: center; margin-bottom: 1rem; gap: 1rem; }
-        h1 { color: #00d4ff; font-size: 1.4rem; margin: 0; }
-        nav a { color: #8892b0; text-decoration: none; font-size: 0.85rem; }
-        nav a:hover { color: #00d4ff; }
-        .panel {
-            background: #16213e;
-            border-radius: 8px;
-            padding: 1rem;
-            margin-bottom: 1rem;
-        }
-        .panel h2 { font-size: 1rem; color: #8892b0; margin-bottom: 0.75rem; }
         .readings {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -52,28 +33,11 @@
         }
         .range-buttons button.active { background: #00d4ff; color: #1a1a2e; font-weight: 600; }
         .chart-container { position: relative; width: 100%; max-height: 350px; }
-        .no-data { color: #8892b0; font-style: italic; padding: 2rem; text-align: center; }
         .timestamp { font-size: 0.75rem; color: #5a6a8a; text-align: right; margin-top: 0.5rem; }
-        footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 1.5rem;
-            padding-top: 0.75rem;
-            border-top: 1px solid rgba(255,255,255,0.05);
-            font-size: 0.75rem;
-            color: #5a6a8a;
-        }
-        footer a { color: #5a6a8a; text-decoration: none; }
-        footer a:hover { color: #00d4ff; }
     </style>
-</head>
-<body>
-    <header>
-        <h1>Powerreader</h1>
-        <nav><a href="/log">Message Log</a></nav>
-    </header>
+{% endblock %}
 
+{% block content %}
     <div class="panel" id="current-panel">
         <h2>Current Reading</h2>
         <div class="readings" id="current-readings">
@@ -117,19 +81,11 @@
         </div>
         <div class="no-data" id="avg-no-data" style="display:none;">No average data available.</div>
     </div>
+{% endblock %}
 
-    <footer>
-        <span id="footer-version">Powerreader</span>
-        <span>
-            <a href="https://github.com/smmartens" target="_blank">smmartens</a>
-            &middot;
-            <a href="https://github.com/smmartens/powerreader" target="_blank">GitHub</a>
-        </span>
-    </footer>
-
+{% block scripts %}
     <script src="/static/chart.umd.min.js"></script>
     <script>
-        const REFRESH_MS = 30000;
         let historyChart = null;
         let avgChart = null;
         let activeRange = "24h";
@@ -185,13 +141,10 @@
                 const noData = document.getElementById("history-no-data");
 
                 if (data.length === 0) {
-                    canvas.style.display = "none";
-                    noData.style.display = "block";
-                    if (historyChart) { historyChart.destroy(); historyChart = null; }
+                    historyChart = toggleChartVisibility(canvas, noData, historyChart);
                     return;
                 }
-                canvas.style.display = "block";
-                noData.style.display = "none";
+                showChart(canvas, noData);
 
                 const labels = data.map(d => formatLabel(d.bucket, range));
                 const values = data.map(d => d.avg_power_w);
@@ -242,13 +195,10 @@
                 const noData = document.getElementById("avg-no-data");
 
                 if (data.length === 0) {
-                    canvas.style.display = "none";
-                    noData.style.display = "block";
-                    if (avgChart) { avgChart.destroy(); avgChart = null; }
+                    avgChart = toggleChartVisibility(canvas, noData, avgChart);
                     return;
                 }
-                canvas.style.display = "block";
-                noData.style.display = "none";
+                showChart(canvas, noData);
 
                 // Fill all 24 hours
                 const byHour = new Array(24).fill(0);
@@ -297,11 +247,6 @@
             fetchHistory(activeRange);
         });
 
-        // --- Version ---
-        fetch("/api/version").then(r => r.json()).then(d => {
-            document.getElementById("footer-version").textContent = "Powerreader v" + d.version;
-        }).catch(() => {});
-
         // --- Init ---
         fetchCurrent();
         fetchStats();
@@ -310,5 +255,4 @@
         setInterval(fetchCurrent, REFRESH_MS);
         setInterval(fetchStats, REFRESH_MS);
     </script>
-</body>
-</html>
+{% endblock %}

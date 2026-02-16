@@ -128,8 +128,10 @@ The calculation is straightforward:
 | `GET` | `/api/averages?days=30&device_id=meter1` | Average power by hour of day |
 | `GET` | `/api/stats?device_id=meter1` | Consumption statistics (avg/day, avg/month, this year) |
 | `GET` | `/api/log?limit=200` | MQTT message log (most recent first) |
+| `GET` | `/api/export?start=2024-01-01&end=2024-01-31&report=hourly` | CSV data export |
 | `GET` | `/api/version` | Application version |
 | `GET` | `/log` | Message log page |
+| `GET` | `/export` | Export page |
 
 ## Security
 

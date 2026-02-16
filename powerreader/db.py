@@ -1,3 +1,6 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 import aiosqlite
 
 _SCHEMA_SQL = """
@@ -46,6 +49,33 @@ CREATE TABLE IF NOT EXISTS mqtt_log (
 );
 """
 
+_INSERT_READING_SQL = """INSERT INTO raw_readings
+   (device_id, timestamp, total_in, total_out, power_w, voltage)
+   VALUES (?, ?, ?, ?, ?, ?)"""
+
+_INSERT_LOG_SQL = """INSERT INTO mqtt_log (device_id, status, summary, topic)
+   VALUES (?, ?, ?, ?)"""
+
+
+@asynccontextmanager
+async def _connect(
+    db_path: str, *, row_factory: bool = False
+) -> AsyncIterator[aiosqlite.Connection]:
+    """Open a database connection with optional Row factory."""
+    async with aiosqlite.connect(db_path) as db:
+        if row_factory:
+            db.row_factory = aiosqlite.Row
+        yield db
+
+
+async def _fetch_one(cursor: aiosqlite.Cursor) -> dict | None:
+    row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def _fetch_all(cursor: aiosqlite.Cursor) -> list[dict]:
+    return [dict(r) for r in await cursor.fetchall()]
+
 
 async def init_db(db_path: str) -> None:
     """Create tables if they don't exist."""
@@ -65,11 +95,9 @@ async def insert_reading(
     voltage: float | None = None,
 ) -> int:
     """Insert a raw reading and return its row id."""
-    async with aiosqlite.connect(db_path) as db:
+    async with _connect(db_path) as db:
         cursor = await db.execute(
-            """INSERT INTO raw_readings
-               (device_id, timestamp, total_in, total_out, power_w, voltage)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+            _INSERT_READING_SQL,
             (device_id, timestamp, total_in, total_out, power_w, voltage),
         )
         await db.commit()
@@ -89,17 +117,14 @@ async def insert_reading_and_log(
     log_topic: str | None = None,
 ) -> int:
     """Insert a raw reading and an MQTT log entry in a single transaction."""
-    async with aiosqlite.connect(db_path) as db:
+    async with _connect(db_path) as db:
         await db.execute("PRAGMA busy_timeout=5000")
         cursor = await db.execute(
-            """INSERT INTO raw_readings
-               (device_id, timestamp, total_in, total_out, power_w, voltage)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+            _INSERT_READING_SQL,
             (device_id, timestamp, total_in, total_out, power_w, voltage),
         )
         await db.execute(
-            """INSERT INTO mqtt_log (device_id, status, summary, topic)
-               VALUES (?, ?, ?, ?)""",
+            _INSERT_LOG_SQL,
             (device_id, log_status, log_summary, log_topic),
         )
         await db.commit()
@@ -108,8 +133,7 @@ async def insert_reading_and_log(
 
 async def get_latest_reading(db_path: str, device_id: str | None = None) -> dict | None:
     """Return the most recent raw reading, optionally filtered by device."""
-    async with aiosqlite.connect(db_path) as db:
-        db.row_factory = aiosqlite.Row
+    async with _connect(db_path, row_factory=True) as db:
         if device_id is not None:
             cursor = await db.execute(
                 """SELECT * FROM raw_readings
@@ -121,62 +145,78 @@ async def get_latest_reading(db_path: str, device_id: str | None = None) -> dict
             cursor = await db.execute(
                 "SELECT * FROM raw_readings ORDER BY timestamp DESC LIMIT 1"
             )
-        row = await cursor.fetchone()
-        return dict(row) if row else None
+        return await _fetch_one(cursor)
 
 
 async def get_readings(
     db_path: str, device_id: str, start: str, end: str
 ) -> list[dict]:
     """Return raw readings for a device within [start, end] time range."""
-    async with aiosqlite.connect(db_path) as db:
-        db.row_factory = aiosqlite.Row
+    async with _connect(db_path, row_factory=True) as db:
         cursor = await db.execute(
             """SELECT * FROM raw_readings
                WHERE device_id = ? AND timestamp >= ? AND timestamp <= ?
                ORDER BY timestamp""",
             (device_id, start, end),
         )
-        rows = await cursor.fetchall()
-        return [dict(r) for r in rows]
+        return await _fetch_all(cursor)
 
 
 async def get_hourly_agg(
     db_path: str, device_id: str, start: str, end: str
 ) -> list[dict]:
     """Return hourly aggregates for a device within [start, end] time range."""
-    async with aiosqlite.connect(db_path) as db:
-        db.row_factory = aiosqlite.Row
+    async with _connect(db_path, row_factory=True) as db:
         cursor = await db.execute(
             """SELECT * FROM hourly_agg
                WHERE device_id = ? AND hour >= ? AND hour <= ?
                ORDER BY hour""",
             (device_id, start, end),
         )
-        return [dict(r) for r in await cursor.fetchall()]
+        return await _fetch_all(cursor)
+
+
+async def get_hourly_agg_by_hour_of_day(
+    db_path: str, device_id: str, start: str, end: str
+) -> list[dict]:
+    """Aggregate hourly_agg rows by hour-of-day (0-23) within a date range."""
+    async with _connect(db_path, row_factory=True) as db:
+        cursor = await db.execute(
+            """SELECT
+                CAST(strftime('%H', hour || ':00:00') AS INTEGER) AS hour_of_day,
+                ROUND(AVG(avg_power_w), 1) AS avg_power_w,
+                ROUND(MAX(max_power_w), 1) AS max_power_w,
+                ROUND(MIN(min_power_w), 1) AS min_power_w,
+                ROUND(SUM(kwh_consumed), 3) AS total_kwh,
+                SUM(reading_count) AS reading_count,
+                COUNT(*) AS days_covered
+            FROM hourly_agg
+            WHERE device_id = ? AND hour >= ? AND hour <= ?
+            GROUP BY hour_of_day
+            ORDER BY hour_of_day""",
+            (device_id, start, end),
+        )
+        return await _fetch_all(cursor)
 
 
 async def get_daily_agg(
     db_path: str, device_id: str, start: str, end: str
 ) -> list[dict]:
     """Return daily aggregates for a device within [start, end] date range."""
-    async with aiosqlite.connect(db_path) as db:
-        db.row_factory = aiosqlite.Row
+    async with _connect(db_path, row_factory=True) as db:
         cursor = await db.execute(
             """SELECT * FROM daily_agg
                WHERE device_id = ? AND date >= ? AND date <= ?
                ORDER BY date""",
             (device_id, start, end),
         )
-        return [dict(r) for r in await cursor.fetchall()]
+        return await _fetch_all(cursor)
 
 
 async def get_consumption_stats(db_path: str, device_id: str, year: int) -> dict:
     """Return consumption stats: avg kWh/day, avg kWh/month, kWh this year."""
     year_start = f"{year}-01-01"
-    async with aiosqlite.connect(db_path) as db:
-        db.row_factory = aiosqlite.Row
-
+    async with _connect(db_path, row_factory=True) as db:
         # Average kWh per day from daily_agg
         cursor = await db.execute(
             "SELECT AVG(kwh_consumed) AS avg_kwh_per_day"
@@ -232,10 +272,9 @@ async def insert_mqtt_log(
     topic: str | None,
 ) -> int:
     """Insert an MQTT log entry and return its row id."""
-    async with aiosqlite.connect(db_path) as db:
+    async with _connect(db_path) as db:
         cursor = await db.execute(
-            """INSERT INTO mqtt_log (device_id, status, summary, topic)
-               VALUES (?, ?, ?, ?)""",
+            _INSERT_LOG_SQL,
             (device_id, status, summary, topic),
         )
         await db.commit()
@@ -244,10 +283,9 @@ async def insert_mqtt_log(
 
 async def get_mqtt_log(db_path: str, limit: int = 200) -> list[dict]:
     """Return recent MQTT log entries ordered by id descending."""
-    async with aiosqlite.connect(db_path) as db:
-        db.row_factory = aiosqlite.Row
+    async with _connect(db_path, row_factory=True) as db:
         cursor = await db.execute(
             "SELECT * FROM mqtt_log ORDER BY id DESC LIMIT ?",
             (limit,),
         )
-        return [dict(r) for r in await cursor.fetchall()]
+        return await _fetch_all(cursor)

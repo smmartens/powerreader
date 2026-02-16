@@ -1,10 +1,11 @@
-import aiosqlite
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+from powerreader.db import _connect, _fetch_all
 
 
 async def compute_hourly_agg(db_path: str) -> int:
     """Compute hourly aggregates from raw_readings. Returns rows upserted."""
-    async with aiosqlite.connect(db_path) as db:
+    async with _connect(db_path) as db:
         cursor = await db.execute(
             """
             INSERT OR REPLACE INTO hourly_agg
@@ -29,7 +30,7 @@ async def compute_hourly_agg(db_path: str) -> int:
 
 async def compute_daily_agg(db_path: str) -> int:
     """Compute daily aggregates from hourly_agg. Returns rows upserted."""
-    async with aiosqlite.connect(db_path) as db:
+    async with _connect(db_path) as db:
         cursor = await db.execute(
             """
             INSERT OR REPLACE INTO daily_agg
@@ -53,7 +54,7 @@ async def compute_daily_agg(db_path: str) -> int:
 
 async def prune_raw_readings(db_path: str, retention_days: int) -> int:
     """Delete raw readings older than retention_days. Returns rows deleted."""
-    async with aiosqlite.connect(db_path) as db:
+    async with _connect(db_path) as db:
         cursor = await db.execute(
             "DELETE FROM raw_readings WHERE timestamp < datetime('now', ?)",
             (f"-{retention_days} days",),
@@ -66,8 +67,7 @@ async def get_avg_by_time_of_day(
     db_path: str, device_id: str, days: int = 30
 ) -> list[dict]:
     """Return average power by hour-of-day (0-23) from hourly_agg."""
-    async with aiosqlite.connect(db_path) as db:
-        db.row_factory = aiosqlite.Row
+    async with _connect(db_path, row_factory=True) as db:
         cursor = await db.execute(
             """
             SELECT
@@ -81,12 +81,12 @@ async def get_avg_by_time_of_day(
             """,
             (device_id, f"-{days} days"),
         )
-        return [dict(row) for row in await cursor.fetchall()]
+        return await _fetch_all(cursor)
 
 
 async def prune_mqtt_log(db_path: str, retention_days: int) -> int:
     """Delete mqtt_log entries older than retention_days. Returns rows deleted."""
-    async with aiosqlite.connect(db_path) as db:
+    async with _connect(db_path) as db:
         cursor = await db.execute(
             "DELETE FROM mqtt_log WHERE timestamp < datetime('now', ?)",
             (f"-{retention_days} days",),

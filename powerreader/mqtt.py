@@ -153,19 +153,16 @@ class MqttSubscriber:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._last_stored: dict[str, float] = {}
 
+    def _async_execute(self, coro: object) -> None:
+        """Schedule a coroutine on the event loop from a callback thread."""
+        if self._loop is not None:
+            asyncio.run_coroutine_threadsafe(coro, self._loop)  # type: ignore[arg-type]
+
     def _log_event(self, status: str, summary: str) -> None:
         """Insert an MQTT log entry from a callback thread."""
-        if self._loop is not None:
-            asyncio.run_coroutine_threadsafe(
-                insert_mqtt_log(
-                    self._settings.db_path,
-                    None,
-                    status,
-                    summary,
-                    None,
-                ),
-                self._loop,
-            )
+        self._async_execute(
+            insert_mqtt_log(self._settings.db_path, None, status, summary, None)
+        )
 
     def _on_connect(
         self,
@@ -207,17 +204,15 @@ class MqttSubscriber:
             parsed = parse_tasmota_message(msg.payload, field_map=self._field_map)
             if parsed is None:
                 logger.debug("Skipping unparseable message on %s", msg.topic)
-                if self._loop is not None:
-                    asyncio.run_coroutine_threadsafe(
-                        insert_mqtt_log(
-                            self._settings.db_path,
-                            device_id,
-                            "invalid",
-                            "unparseable payload",
-                            msg.topic,
-                        ),
-                        self._loop,
+                self._async_execute(
+                    insert_mqtt_log(
+                        self._settings.db_path,
+                        device_id,
+                        "invalid",
+                        "unparseable payload",
+                        msg.topic,
                     )
+                )
                 return
             now = time.monotonic()
 
@@ -239,35 +234,31 @@ class MqttSubscriber:
                 parts.append(f"{parsed['voltage']}V")
             summary = _sanitize(", ".join(parts), 256) if parts else None
 
-            if self._loop is not None:
-                asyncio.run_coroutine_threadsafe(
-                    insert_reading_and_log(
-                        db_path=self._settings.db_path,
-                        device_id=device_id,
-                        timestamp=parsed["timestamp"],
-                        total_in=parsed.get("total_in"),
-                        total_out=parsed.get("total_out"),
-                        power_w=parsed.get("power_w"),
-                        voltage=parsed.get("voltage"),
-                        log_summary=summary,
-                        log_topic=msg.topic,
-                    ),
-                    self._loop,
+            self._async_execute(
+                insert_reading_and_log(
+                    db_path=self._settings.db_path,
+                    device_id=device_id,
+                    timestamp=parsed["timestamp"],
+                    total_in=parsed.get("total_in"),
+                    total_out=parsed.get("total_out"),
+                    power_w=parsed.get("power_w"),
+                    voltage=parsed.get("voltage"),
+                    log_summary=summary,
+                    log_topic=msg.topic,
                 )
+            )
         except Exception as exc:
             logger.exception("Error processing message on %s", msg.topic)
             device_id = extract_device_id(msg.topic)
-            if self._loop is not None:
-                asyncio.run_coroutine_threadsafe(
-                    insert_mqtt_log(
-                        self._settings.db_path,
-                        device_id,
-                        "error",
-                        str(exc),
-                        msg.topic,
-                    ),
-                    self._loop,
+            self._async_execute(
+                insert_mqtt_log(
+                    self._settings.db_path,
+                    device_id,
+                    "error",
+                    str(exc),
+                    msg.topic,
                 )
+            )
 
     def start(self, loop: asyncio.AbstractEventLoop) -> None:
         """Connect to broker and start the network loop in a background thread.

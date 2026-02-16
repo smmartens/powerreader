@@ -13,6 +13,16 @@ def _make_empty_client(tmp_path) -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
 
 
+def _make_log_client(tmp_path, entries: list[tuple[str, str, str, str]]) -> TestClient:
+    """Create a TestClient with an initialized DB containing the given log entries."""
+    db_path = str(tmp_path / "log.db")
+    asyncio.run(init_db(db_path))
+    for device_id, status, summary, topic in entries:
+        asyncio.run(insert_mqtt_log(db_path, device_id, status, summary, topic))
+    app.state.db_path = db_path
+    return TestClient(app, raise_server_exceptions=False)
+
+
 class TestVersionEndpoint:
     def test_returns_version(self, api_client):
         resp = api_client.get("/api/version")
@@ -126,16 +136,13 @@ class TestStatsEndpoint:
 
 class TestLogEndpoint:
     def test_returns_log_entries(self, tmp_path):
-        db_path = str(tmp_path / "log.db")
-        asyncio.run(init_db(db_path))
-        asyncio.run(insert_mqtt_log(db_path, "dev1", "ok", "538W", "tele/dev1/SENSOR"))
-        asyncio.run(
-            insert_mqtt_log(
-                db_path, "dev1", "invalid", "unparseable payload", "tele/dev1/SENSOR"
-            )
+        client = _make_log_client(
+            tmp_path,
+            [
+                ("dev1", "ok", "538W", "tele/dev1/SENSOR"),
+                ("dev1", "invalid", "unparseable payload", "tele/dev1/SENSOR"),
+            ],
         )
-        app.state.db_path = db_path
-        client = TestClient(app, raise_server_exceptions=False)
         resp = client.get("/api/log")
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -150,12 +157,10 @@ class TestLogEndpoint:
         assert resp.json()["data"] == []
 
     def test_limit_parameter(self, tmp_path):
-        db_path = str(tmp_path / "log.db")
-        asyncio.run(init_db(db_path))
-        for i in range(5):
-            asyncio.run(insert_mqtt_log(db_path, "dev1", "ok", f"entry {i}", "t"))
-        app.state.db_path = db_path
-        client = TestClient(app, raise_server_exceptions=False)
+        client = _make_log_client(
+            tmp_path,
+            [("dev1", "ok", f"entry {i}", "t") for i in range(5)],
+        )
         resp = client.get("/api/log?limit=3")
         assert resp.status_code == 200
         assert len(resp.json()["data"]) == 3
@@ -198,6 +203,117 @@ class TestParameterClamping:
         resp = client.get("/api/averages?days=99999")
         assert resp.status_code == 200
         assert resp.json()["days"] == 3650
+
+
+class TestExportEndpoint:
+    def test_hourly_export_returns_csv(self, api_client):
+        resp = api_client.get(
+            "/api/export?start=2024-01-15&end=2024-01-16&report=hourly"
+        )
+        assert resp.status_code == 200
+        assert "text/csv" in resp.headers["content-type"]
+        assert "attachment" in resp.headers["content-disposition"]
+        assert (
+            "powerreader_hourly_2024-01-15_2024-01-16.csv"
+            in resp.headers["content-disposition"]
+        )
+        lines = resp.text.strip().splitlines()
+        expected = (
+            "hour_of_day,avg_power_w,max_power_w,"
+            "min_power_w,total_kwh,reading_count,days_covered"
+        )
+        assert lines[0] == expected
+
+    def test_hourly_export_csv_content(self, api_client):
+        resp = api_client.get(
+            "/api/export?start=2024-01-15&end=2024-01-16&report=hourly"
+        )
+        assert resp.status_code == 200
+        lines = resp.text.strip().splitlines()
+        # Header + 2 data rows: hour 10 (aggregated from 2 days) and hour 14
+        assert len(lines) == 3
+        # First data row is hour 10, aggregated from 2 days
+        assert lines[1].startswith("10,")
+        assert lines[1].endswith(",2")  # days_covered = 2
+
+    def test_empty_range_returns_header_only(self, api_client):
+        resp = api_client.get(
+            "/api/export?start=2099-01-01&end=2099-01-02&report=hourly"
+        )
+        assert resp.status_code == 200
+        lines = resp.text.strip().splitlines()
+        assert len(lines) == 1  # header only
+
+    def test_invalid_report_type_returns_400(self, api_client):
+        resp = api_client.get(
+            "/api/export?start=2024-01-15&end=2024-01-16&report=bogus"
+        )
+        assert resp.status_code == 400
+        assert "bogus" in resp.json()["detail"]
+
+    def test_start_after_end_returns_400(self, api_client):
+        resp = api_client.get(
+            "/api/export?start=2024-01-20&end=2024-01-10&report=hourly"
+        )
+        assert resp.status_code == 400
+
+    def test_invalid_date_format_returns_400(self, api_client):
+        resp = api_client.get(
+            "/api/export?start=not-a-date&end=2024-01-16&report=hourly"
+        )
+        assert resp.status_code == 400
+
+    def test_missing_start_returns_422(self, api_client):
+        resp = api_client.get("/api/export?end=2024-01-16&report=hourly")
+        assert resp.status_code == 422
+
+    def test_missing_end_returns_422(self, api_client):
+        resp = api_client.get("/api/export?start=2024-01-15&report=hourly")
+        assert resp.status_code == 422
+
+    def test_date_range_exceeds_limit_returns_400(self, api_client):
+        resp = api_client.get(
+            "/api/export?start=0001-01-01&end=9999-12-31&report=hourly"
+        )
+        assert resp.status_code == 400
+        assert "3650" in resp.json()["detail"]
+
+    def test_long_date_input_truncated(self, api_client):
+        resp = api_client.get(
+            "/api/export?start=2024-01-15xxxxxxxxxxxx&end=2024-01-16&report=hourly"
+        )
+        assert resp.status_code == 200
+
+    def test_auto_detects_device(self, api_client):
+        resp = api_client.get(
+            "/api/export?start=2024-01-15&end=2024-01-16&report=hourly"
+        )
+        assert resp.status_code == 200
+        lines = resp.text.strip().splitlines()
+        assert len(lines) > 1
+
+    def test_no_device_returns_404(self, tmp_path):
+        client = _make_empty_client(tmp_path)
+        resp = client.get("/api/export?start=2024-01-15&end=2024-01-16&report=hourly")
+        assert resp.status_code == 404
+
+    def test_default_report_is_hourly(self, api_client):
+        resp = api_client.get("/api/export?start=2024-01-15&end=2024-01-16")
+        assert resp.status_code == 200
+        assert "text/csv" in resp.headers["content-type"]
+
+
+class TestExportPage:
+    def test_returns_html(self, api_client):
+        resp = api_client.get("/export")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "Export" in resp.text
+
+    def test_has_nav_links(self, api_client):
+        resp = api_client.get("/export")
+        assert "/log" in resp.text
+        assert "/" in resp.text
 
 
 class TestSecurityHeaders:
