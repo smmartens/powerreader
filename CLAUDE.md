@@ -123,6 +123,19 @@ All config via environment variables (Docker-friendly):
 | `WEB_PORT` | `8080` | Dashboard port |
 | `ALLOWED_DEVICES` | `""` | Comma-separated device ID allowlist (empty = accept all) |
 
+## Time Handling
+
+All timestamps in the system are **naive server local time**. Never use UTC.
+
+- **Tasmota** sends a `Time` field in device local time (device is on the same LAN, so same timezone as the server).
+- **MQTT subscriber** stores the Tasmota `Time` value as-is (naive local time string).
+- **SQLite column defaults** must use `datetime('now', 'localtime')`, not `datetime('now')` (which returns UTC).
+- **SQL filters and pruning** that compare against "now" must include the `'localtime'` modifier: `datetime('now', 'localtime', '-30 days')`.
+- **Python code** must use `datetime.now()`, never `datetime.now(UTC)` or `datetime.now(timezone.utc)`.
+- **Never mix UTC and local time** in comparisons — this causes off-by-one-hour (or more) bugs where log entries or pruning thresholds are silently wrong.
+
+This design is intentional: since the single-container deployment runs on a home LAN where all devices share a timezone, naive local time is the simplest correct approach. If multi-timezone support were ever needed, the schema would need to store timezone-aware timestamps.
+
 ## Branching Strategy
 
 Trunk-based development:
