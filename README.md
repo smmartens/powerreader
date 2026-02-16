@@ -15,11 +15,13 @@ A self-hosted power consumption monitor that subscribes to MQTT messages from a 
 
 ## Quick Start
 
-1. Create a directory on your device and download the production compose file:
+1. Clone the repo and copy the deployment files to your device:
    ```bash
-   mkdir powerreader && cd powerreader
-   curl -O https://raw.githubusercontent.com/smmartens/powerreader/main/docker-compose.prod.yml
-   curl -O https://raw.githubusercontent.com/smmartens/powerreader/main/mosquitto/mosquitto.conf
+   git clone https://github.com/smmartens/powerreader.git /tmp/powerreader
+   mkdir -p powerreader && cd powerreader
+   cp /tmp/powerreader/docker-compose.prod.yml .
+   cp /tmp/powerreader/mosquitto/mosquitto.conf .
+   rm -rf /tmp/powerreader
    ```
 
 2. Start the stack:
@@ -66,6 +68,22 @@ All configuration is via environment variables (set in `docker-compose.yml` or `
 | `WEB_PORT` | `8080` | Dashboard port |
 | `FIELD_MAP` | `""` | Custom MQTT field mapping (comma-separated `key=path` pairs, e.g. `total_in=SML.Total_in,power_w=SML.Power_curr`). Empty = LK13BE defaults. |
 | `ALLOWED_DEVICES` | `""` | Comma-separated allowlist of device IDs (e.g. `tasmota_ABC123,tasmota_DEF456`). Empty = accept all devices. |
+
+## How the Calculation Works
+
+Powerreader derives all consumption data from a single meter value: **`total_in`** — the cumulative energy counter (kWh) that every smart meter exposes by default. No meter PIN code is required. While a PIN would unlock additional real-time values like instantaneous power, voltage, and amperage per phase, these are not needed for consumption tracking.
+
+The calculation is straightforward:
+
+1. **Raw readings** are stored with the `total_in` value as reported by the meter (e.g. `42857.891 kWh`).
+2. **Hourly aggregation** computes the energy consumed per hour as the delta between the highest and lowest `total_in` within that hour:
+   ```
+   energy_kwh = MAX(total_in) - MIN(total_in)
+   energy_wh  = energy_kwh × 1000
+   ```
+   For a full 1-hour bucket, Wh and average Watts are numerically identical (`P = E / t = Wh / 1h = W`), so the same value serves as both "Wh consumed" and "average power in W" on the dashboard.
+3. **Daily aggregation** sums the hourly kWh deltas for total daily consumption, and averages the hourly values for average daily power.
+4. **Consumption stats** (avg per day, per month, this year) are derived from the daily aggregates and the overall `total_in` delta.
 
 ## Architecture
 
