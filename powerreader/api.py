@@ -17,6 +17,11 @@ _RANGE_MAP = {
 _MAX_DEVICE_ID_LEN = 64
 
 
+def _clamp(value: int, lo: int, hi: int) -> int:
+    """Clamp *value* to [lo, hi]."""
+    return max(lo, min(value, hi))
+
+
 async def _resolve_device_id(db_path: str, device_id: str | None) -> str | None:
     """Return the given device_id, or auto-detect from the latest reading."""
     if device_id is not None:
@@ -81,7 +86,7 @@ async def history(
 async def averages(
     request: Request, device_id: str | None = None, days: int = 30
 ) -> dict:
-    days = max(1, min(days, 3650))
+    days = _clamp(days, 1, 3650)
     resolved = await _resolve_device_id(request.app.state.db_path, device_id)
     if resolved is None:
         return {"device_id": device_id, "days": days, "data": []}
@@ -106,6 +111,6 @@ async def consumption_stats(request: Request, device_id: str | None = None) -> d
 
 @router.get("/log")
 async def mqtt_log(request: Request, limit: int = 200) -> dict:
-    limit = max(1, min(limit, 1000))
+    limit = _clamp(limit, 1, 1000)
     data = await db.get_mqtt_log(request.app.state.db_path, limit=limit)
     return {"data": data}

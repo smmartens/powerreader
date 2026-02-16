@@ -4,25 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Powerreader - Message Log</title>
+    <link rel="stylesheet" href="/static/style.css">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #1a1a2e;
-            color: #e0e0e0;
-            padding: 1rem;
-        }
-        header { display: flex; justify-content: center; align-items: center; margin-bottom: 1rem; gap: 1rem; }
-        h1 { color: #00d4ff; font-size: 1.4rem; margin: 0; }
-        nav a { color: #8892b0; text-decoration: none; font-size: 0.85rem; }
-        nav a:hover { color: #00d4ff; }
-        .panel {
-            background: #16213e;
-            border-radius: 8px;
-            padding: 1rem;
-            margin-bottom: 1rem;
-        }
-        .panel h2 { font-size: 1rem; color: #8892b0; margin-bottom: 0.75rem; }
         .controls { margin-bottom: 0.75rem; }
         .controls label { color: #8892b0; font-size: 0.85rem; margin-right: 0.5rem; }
         .controls select {
@@ -44,19 +27,6 @@
         .status-ok { color: #e0e0e0; }
         .status-invalid { color: #f0a500; }
         .status-error { color: #e74c3c; }
-        .no-data { color: #8892b0; font-style: italic; padding: 2rem; text-align: center; }
-        footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 1.5rem;
-            padding-top: 0.75rem;
-            border-top: 1px solid rgba(255,255,255,0.05);
-            font-size: 0.75rem;
-            color: #5a6a8a;
-        }
-        footer a { color: #5a6a8a; text-decoration: none; }
-        footer a:hover { color: #00d4ff; }
     </style>
 </head>
 <body>
@@ -99,15 +69,8 @@
         </span>
     </footer>
 
+    <script src="/static/common.js"></script>
     <script>
-        const REFRESH_MS = 30000;
-
-        function escapeHtml(s) {
-            const el = document.createElement("div");
-            el.textContent = s;
-            return el.innerHTML;
-        }
-
         function statusClass(s) {
             if (s === "invalid") return "status-invalid";
             if (s === "error") return "status-error";
@@ -143,10 +106,7 @@
             } catch (_) { /* silent */ }
         }
 
-        fetch("/api/version").then(r => r.json()).then(d => {
-            document.getElementById("footer-version").textContent = "Powerreader v" + d.version;
-        }).catch(() => {});
-
+        initVersionFooter();
         document.getElementById("limit-select").addEventListener("change", fetchLog);
         fetchLog();
         setInterval(fetchLog, REFRESH_MS);
