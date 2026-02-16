@@ -23,13 +23,11 @@ Any Tasmota-compatible device that publishes SML or ENERGY data via MQTT will wo
 
 ## Quick Start
 
-1. Clone the repo and copy the deployment files to your device:
+1. Create a directory and download the deployment files:
    ```bash
-   git clone https://github.com/smmartens/powerreader.git /tmp/powerreader
    mkdir -p powerreader && cd powerreader
-   cp /tmp/powerreader/docker-compose.prod.yml .
-   cp /tmp/powerreader/mosquitto/mosquitto.conf .
-   rm -rf /tmp/powerreader
+   curl -LO https://raw.githubusercontent.com/smmartens/powerreader/main/docker-compose.prod.yml
+   curl -LO https://raw.githubusercontent.com/smmartens/powerreader/main/mosquitto/mosquitto.conf
    ```
 
 2. Start the stack:
