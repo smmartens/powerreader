@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS raw_readings (
     total_out REAL,
     power_w REAL,
     voltage REAL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS hourly_agg (
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS daily_agg (
 
 CREATE TABLE IF NOT EXISTS mqtt_log (
     id INTEGER PRIMARY KEY,
-    timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+    timestamp TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
     device_id TEXT,
     status TEXT NOT NULL,
     summary TEXT,
