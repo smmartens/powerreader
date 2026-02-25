@@ -2,6 +2,17 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    """Application settings loaded from environment variables.
+
+    ``poll_store_mode`` controls message storage:
+      - ``"all"``            — store every incoming MQTT message
+      - ``"downsample_60s"`` — store at most one message per device per minute
+
+    ``field_map`` overrides the default Tasmota field mapping.
+    Format: ``"total_in=SML.Total_in,power_w=SML.Power_curr"``
+    Leave empty to use the built-in LK13BE defaults (see mqtt.DEFAULT_FIELD_MAP).
+    """
+
     mqtt_host: str = "localhost"
     mqtt_port: int = 1883
     mqtt_user: str = ""

@@ -14,6 +14,9 @@ def _read_pyproject_version() -> str:
     return "0.0.0-dev"
 
 
+# importlib.metadata only works when the package is installed.
+# In Docker the app runs with `uv run --no-sync`, which skips installation,
+# so the package metadata is absent and we fall back to reading pyproject.toml.
 try:
     __version__ = version("powerreader")
 except PackageNotFoundError:

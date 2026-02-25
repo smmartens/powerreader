@@ -14,9 +14,10 @@ async def compute_hourly_agg(db_path: str) -> int:
             SELECT
                 device_id,
                 strftime('%Y-%m-%dT%H', timestamp) AS hour,
-                (MAX(total_in) - MIN(total_in)) * 1000,
-                MAX(total_in) - MIN(total_in),
+                (MAX(total_in) - MIN(total_in)) * 1000,  -- kWh delta → Wh (avg_power_w)
+                MAX(total_in) - MIN(total_in),            -- kWh consumed this hour
                 COUNT(*),
+                -- Seconds between first and last reading in the hour
                 CAST(
                     strftime('%s', MAX(timestamp))
                     - strftime('%s', MIN(timestamp))

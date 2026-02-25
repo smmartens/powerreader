@@ -33,9 +33,15 @@ async def _resolve_device_id(db_path: str, device_id: str | None) -> str | None:
     return latest["device_id"] if latest else None
 
 
+# --- Utility endpoints ---
+
+
 @router.get("/version")
 async def version_info() -> dict:
     return {"version": __version__}
+
+
+# --- Reading endpoints ---
 
 
 @router.get("/current")
@@ -159,6 +165,9 @@ async def consumption_stats(request: Request, device_id: str | None = None) -> d
     }
 
 
+# --- Analytics endpoints ---
+
+
 @router.get("/records")
 async def consumption_records(request: Request, device_id: str | None = None) -> dict:
     resolved = await _resolve_device_id(request.app.state.db_path, device_id)
@@ -171,6 +180,9 @@ async def consumption_records(request: Request, device_id: str | None = None) ->
         request.app.state.db_path, resolved, ascending=True
     )
     return {"device_id": resolved, "highest": highest, "lowest": lowest}
+
+
+# --- Log endpoint ---
 
 
 @router.get("/log")
@@ -192,7 +204,7 @@ _CSV_COLUMNS_HOURLY = [
 ]
 
 
-_MAX_EXPORT_DAYS = 3650
+_MAX_EXPORT_DAYS = 3650  # ~10 years; guards against accidental huge queries
 
 
 def _parse_date(value: str) -> date:
@@ -229,6 +241,8 @@ async def _generate_hourly_csv(
         buf.truncate()
 
 
+# Maps report type names to async CSV generator functions.
+# Add a new entry here to support additional export formats.
 _REPORT_GENERATORS = {
     "hourly": _generate_hourly_csv,
 }
