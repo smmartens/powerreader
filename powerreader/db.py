@@ -285,6 +285,18 @@ async def insert_mqtt_log(
         return cursor.lastrowid  # type: ignore[return-value]
 
 
+async def get_earliest_date(db_path: str, device_id: str) -> str | None:
+    """Return the earliest date in hourly_agg for a device (YYYY-MM-DD), or None."""
+    async with _connect(db_path, row_factory=True) as db:
+        cursor = await db.execute(
+            "SELECT substr(MIN(hour), 1, 10) AS earliest_date"
+            " FROM hourly_agg WHERE device_id = ?",
+            (device_id,),
+        )
+        row = await cursor.fetchone()
+        return row["earliest_date"] if row and row["earliest_date"] else None
+
+
 async def get_mqtt_log(db_path: str, limit: int = 200) -> list[dict]:
     """Return recent MQTT log entries ordered by id descending."""
     async with _connect(db_path, row_factory=True) as db:

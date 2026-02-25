@@ -4,7 +4,6 @@ import pytest
 from powerreader.aggregation import (
     compute_daily_agg,
     compute_hourly_agg,
-    get_avg_by_time_of_day,
     prune_mqtt_log,
     prune_raw_readings,
 )
@@ -97,21 +96,6 @@ async def test_prune_keeps_recent_readings(seeded_db: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_avg_by_time_of_day(seeded_db: str) -> None:
-    await compute_hourly_agg(seeded_db)
-
-    # Use a large day window since test data is from 2024
-    result = await get_avg_by_time_of_day(seeded_db, "meter1", days=999999)
-
-    hours = {r["hour_of_day"]: r["avg_power_w"] for r in result}
-    # Hour 10: day1 delta=3kWh→3000W, day2 delta=5kWh→5000W, AVG=4000
-    assert hours[10] == pytest.approx(4000.0)
-    # Hour 14: delta=5kWh→5000W
-    assert hours[14] == pytest.approx(5000.0)
-    assert len(result) == 2  # only hours 10 and 14 have data
-
-
-@pytest.mark.asyncio
 async def test_hourly_agg_total_in_only(seeded_db_total_only: str) -> None:
     """Aggregation derives avg_power_w from kWh delta when power_w is NULL."""
     count = await compute_hourly_agg(seeded_db_total_only)
@@ -184,12 +168,6 @@ async def test_daily_agg_idempotent(seeded_db: str) -> None:
         cursor = await db.execute("SELECT COUNT(*) FROM daily_agg")
         (count,) = await cursor.fetchone()
     assert count == 2
-
-
-@pytest.mark.asyncio
-async def test_avg_by_time_of_day_empty(initialized_db: str) -> None:
-    result = await get_avg_by_time_of_day(initialized_db, "meter1")
-    assert result == []
 
 
 @pytest.mark.asyncio

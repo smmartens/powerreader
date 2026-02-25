@@ -7,7 +7,6 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from starlette.responses import StreamingResponse
 
 from powerreader import __version__, db
-from powerreader.aggregation import get_avg_by_time_of_day
 
 router = APIRouter(prefix="/api")
 
@@ -88,14 +87,48 @@ async def history(
 
 @router.get("/averages")
 async def averages(
-    request: Request, device_id: str | None = None, days: int = 30
+    request: Request,
+    device_id: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
 ) -> dict:
-    days = _clamp(days, 1, 3650)
+    from_date_parsed = _parse_date(from_date) if from_date is not None else None
+    to_date_parsed = _parse_date(to_date) if to_date is not None else None
+
     resolved = await _resolve_device_id(request.app.state.db_path, device_id)
     if resolved is None:
-        return {"device_id": device_id, "days": days, "data": []}
-    data = await get_avg_by_time_of_day(request.app.state.db_path, resolved, days)
-    return {"device_id": resolved, "days": days, "data": data}
+        today = date.today().isoformat()
+        return {
+            "device_id": device_id,
+            "from_date": from_date_parsed.isoformat() if from_date_parsed else today,
+            "to_date": to_date_parsed.isoformat() if to_date_parsed else today,
+            "data": [],
+        }
+
+    today = date.today()
+    if from_date_parsed is None:
+        earliest = await db.get_earliest_date(request.app.state.db_path, resolved)
+        from_date_parsed = date.fromisoformat(earliest) if earliest else today
+    if to_date_parsed is None:
+        to_date_parsed = today
+
+    if from_date_parsed > to_date_parsed:
+        raise HTTPException(
+            status_code=400, detail="from_date must not be after to_date"
+        )
+
+    data = await db.get_hourly_agg_by_hour_of_day(
+        request.app.state.db_path,
+        resolved,
+        from_date_parsed.isoformat() + "T00",
+        to_date_parsed.isoformat() + "T23",
+    )
+    return {
+        "device_id": resolved,
+        "from_date": from_date_parsed.isoformat(),
+        "to_date": to_date_parsed.isoformat(),
+        "data": data,
+    }
 
 
 @router.get("/stats")

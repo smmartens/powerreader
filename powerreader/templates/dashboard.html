@@ -34,6 +34,25 @@
         .range-buttons button.active { background: #00d4ff; color: #1a1a2e; font-weight: 600; }
         .chart-container { position: relative; width: 100%; max-height: 350px; }
         .timestamp { font-size: 0.75rem; color: #5a6a8a; text-align: right; margin-top: 0.5rem; }
+        .date-filter { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+        .date-filter label { font-size: 0.85rem; color: #8892b0; }
+        .date-filter input[type="date"] {
+            background: #0f3460;
+            color: #e0e0e0;
+            border: 1px solid #1a5276;
+            padding: 0.3rem 0.5rem;
+            border-radius: 4px;
+            color-scheme: dark;
+        }
+        .date-filter button {
+            background: #0f3460;
+            color: #e0e0e0;
+            border: 1px solid #1a5276;
+            padding: 0.4rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .date-filter button:hover { background: #1a5276; }
     </style>
 {% endblock %}
 
@@ -76,6 +95,13 @@
 
     <div class="panel">
         <h2>Average Consumption by Hour of Day</h2>
+        <div class="date-filter">
+            <label for="avg-from">From:</label>
+            <input type="date" id="avg-from">
+            <label for="avg-to">To:</label>
+            <input type="date" id="avg-to">
+            <button id="avg-apply">Apply</button>
+        </div>
         <div class="chart-container">
             <canvas id="avg-chart"></canvas>
         </div>
@@ -185,11 +211,20 @@
         }
 
         // --- Average by Hour of Day ---
-        async function fetchAverages() {
+        async function fetchAverages(fromDate, toDate) {
             try {
-                const resp = await fetch("/api/averages?days=30");
+                const params = new URLSearchParams();
+                if (fromDate) params.set("from_date", fromDate);
+                if (toDate) params.set("to_date", toDate);
+                const query = params.toString();
+                const resp = await fetch("/api/averages" + (query ? "?" + query : ""));
                 if (!resp.ok) return;
                 const body = await resp.json();
+
+                // On initial load, populate date pickers from API-resolved defaults
+                if (!fromDate && body.from_date) document.getElementById("avg-from").value = body.from_date;
+                if (!toDate && body.to_date) document.getElementById("avg-to").value = body.to_date;
+
                 const data = body.data || [];
                 const canvas = document.getElementById("avg-chart");
                 const noData = document.getElementById("avg-no-data");
@@ -238,6 +273,14 @@
             } catch (_) { /* silent */ }
         }
 
+        // --- Apply date filter ---
+        document.getElementById("avg-apply").addEventListener("click", () => {
+            fetchAverages(
+                document.getElementById("avg-from").value,
+                document.getElementById("avg-to").value
+            );
+        });
+
         // --- Range toggle ---
         document.getElementById("range-buttons").addEventListener("click", (e) => {
             if (e.target.tagName !== "BUTTON") return;
@@ -251,7 +294,7 @@
         fetchCurrent();
         fetchStats();
         fetchHistory(activeRange);
-        fetchAverages();
+        fetchAverages();  // no args: API resolves defaults (earliest date → today)
         setInterval(fetchCurrent, REFRESH_MS);
         setInterval(fetchStats, REFRESH_MS);
     </script>

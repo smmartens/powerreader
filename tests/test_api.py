@@ -85,15 +85,36 @@ class TestHistoryEndpoint:
 
 class TestAveragesEndpoint:
     def test_returns_hour_of_day_grouping(self, api_client):
-        resp = api_client.get("/api/averages?device_id=meter1&days=1000")
+        resp = api_client.get(
+            "/api/averages?device_id=meter1&from_date=2024-01-15&to_date=2024-01-16"
+        )
         assert resp.status_code == 200
         body = resp.json()
         assert body["device_id"] == "meter1"
-        assert body["days"] == 1000  # within 3650 cap, passed through
+        assert body["from_date"] == "2024-01-15"
+        assert body["to_date"] == "2024-01-16"
         assert isinstance(body["data"], list)
         assert len(body["data"]) > 0
         assert "hour_of_day" in body["data"][0]
         assert "avg_power_w" in body["data"][0]
+
+    def test_defaults_to_earliest_and_today(self, api_client):
+        resp = api_client.get("/api/averages?device_id=meter1")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["device_id"] == "meter1"
+        assert body["from_date"] == "2024-01-15"  # earliest date in test DB
+        assert len(body["data"]) > 0
+
+    def test_single_day(self, api_client):
+        resp = api_client.get(
+            "/api/averages?device_id=meter1&from_date=2024-01-15&to_date=2024-01-15"
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["from_date"] == "2024-01-15"
+        assert body["to_date"] == "2024-01-15"
+        assert len(body["data"]) > 0
 
     def test_empty_db_returns_empty_data(self, tmp_path):
         client = _make_empty_client(tmp_path)
@@ -101,12 +122,15 @@ class TestAveragesEndpoint:
         assert resp.status_code == 200
         assert resp.json()["data"] == []
 
-    def test_defaults(self, api_client):
-        resp = api_client.get("/api/averages?device_id=meter1")
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["device_id"] == "meter1"
-        assert body["days"] == 30
+    def test_invalid_date_returns_400(self, api_client):
+        resp = api_client.get("/api/averages?from_date=not-a-date")
+        assert resp.status_code == 400
+
+    def test_from_after_to_returns_400(self, api_client):
+        resp = api_client.get(
+            "/api/averages?device_id=meter1&from_date=2024-01-16&to_date=2024-01-15"
+        )
+        assert resp.status_code == 400
 
 
 class TestStatsEndpoint:
@@ -197,12 +221,6 @@ class TestParameterClamping:
         client = _make_empty_client(tmp_path)
         resp = client.get("/api/log?limit=-5")
         assert resp.status_code == 200
-
-    def test_averages_days_clamped_to_3650(self, tmp_path):
-        client = _make_empty_client(tmp_path)
-        resp = client.get("/api/averages?days=99999")
-        assert resp.status_code == 200
-        assert resp.json()["days"] == 3650
 
 
 class TestExportEndpoint:

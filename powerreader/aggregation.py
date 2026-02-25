@@ -1,6 +1,6 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from powerreader.db import _connect, _fetch_all
+from powerreader.db import _connect
 
 
 async def compute_hourly_agg(db_path: str) -> int:
@@ -62,27 +62,6 @@ async def prune_raw_readings(db_path: str, retention_days: int) -> int:
         )
         await db.commit()
         return cursor.rowcount
-
-
-async def get_avg_by_time_of_day(
-    db_path: str, device_id: str, days: int = 30
-) -> list[dict]:
-    """Return average power by hour-of-day (0-23) from hourly_agg."""
-    async with _connect(db_path, row_factory=True) as db:
-        cursor = await db.execute(
-            """
-            SELECT
-                CAST(strftime('%H', hour || ':00:00') AS INTEGER) AS hour_of_day,
-                AVG(avg_power_w) AS avg_power_w
-            FROM hourly_agg
-            WHERE device_id = ?
-              AND hour >= strftime('%Y-%m-%dT%H', datetime('now', 'localtime', ?))
-            GROUP BY hour_of_day
-            ORDER BY hour_of_day
-            """,
-            (device_id, f"-{days} days"),
-        )
-        return await _fetch_all(cursor)
 
 
 async def prune_mqtt_log(db_path: str, retention_days: int) -> int:

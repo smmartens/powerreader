@@ -3,6 +3,7 @@ import pytest
 
 from powerreader.db import (
     get_consumption_stats,
+    get_earliest_date,
     get_latest_reading,
     get_mqtt_log,
     get_readings,
@@ -108,6 +109,21 @@ async def test_insert_reading_and_log(initialized_db: str) -> None:
     assert len(logs) == 1
     assert logs[0]["status"] == "ok"
     assert logs[0]["summary"] == "1000.0kWh"
+
+
+@pytest.mark.asyncio
+async def test_get_earliest_date(seeded_db: str) -> None:
+    from powerreader.aggregation import compute_hourly_agg
+
+    await compute_hourly_agg(seeded_db)
+    result = await get_earliest_date(seeded_db, "meter1")
+    assert result == "2024-01-15"
+
+
+@pytest.mark.asyncio
+async def test_get_earliest_date_empty(initialized_db: str) -> None:
+    result = await get_earliest_date(initialized_db, "meter1")
+    assert result is None
 
 
 @pytest.mark.asyncio
