@@ -34,6 +34,33 @@
         .range-buttons button.active { background: #00d4ff; color: #1a1a2e; font-weight: 600; }
         .chart-container { position: relative; width: 100%; max-height: 350px; }
         .timestamp { font-size: 0.75rem; color: #5a6a8a; text-align: right; margin-top: 0.5rem; }
+        .date-filter { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+        .date-filter label { font-size: 0.85rem; color: #8892b0; }
+        .date-filter input[type="date"] {
+            background: #0f3460;
+            color: #e0e0e0;
+            border: 1px solid #1a5276;
+            padding: 0.3rem 0.5rem;
+            border-radius: 4px;
+            color-scheme: dark;
+        }
+        .date-filter button {
+            background: #0f3460;
+            color: #e0e0e0;
+            border: 1px solid #1a5276;
+            padding: 0.4rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .date-filter button:hover { background: #1a5276; }
+        .records-box { background: #0f3460; border-radius: 6px; padding: 0.75rem; margin-bottom: 0.75rem; }
+        .records-box:last-child { margin-bottom: 0; }
+        .records-box h3 { font-size: 0.85rem; color: #8892b0; margin-bottom: 0.5rem; }
+        .records-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+        .records-table td { padding: 0.3rem 0.5rem; }
+        .records-table tr:nth-child(even) { background: rgba(255,255,255,0.03); }
+        .records-table .rank { color: #00d4ff; font-weight: 700; width: 2rem; }
+        .records-table .value { text-align: right; }
     </style>
 {% endblock %}
 
@@ -59,6 +86,7 @@
             </div>
         </div>
         <div class="timestamp" id="cur-timestamp"></div>
+        <div class="timestamp" id="cur-coverage"></div>
     </div>
 
     <div class="panel">
@@ -76,10 +104,50 @@
 
     <div class="panel">
         <h2>Average Consumption by Hour of Day</h2>
+        <div class="date-filter">
+            <label for="avg-from">From:</label>
+            <input type="date" id="avg-from">
+            <label for="avg-to">To:</label>
+            <input type="date" id="avg-to">
+            <button id="avg-apply">Apply</button>
+        </div>
         <div class="chart-container">
             <canvas id="avg-chart"></canvas>
         </div>
         <div class="no-data" id="avg-no-data" style="display:none;">No average data available.</div>
+    </div>
+
+    <div class="panel">
+        <h2>Average Consumption by Day of Week</h2>
+        <div class="date-filter">
+            <label for="weekday-from">From:</label>
+            <input type="date" id="weekday-from">
+            <label for="weekday-to">To:</label>
+            <input type="date" id="weekday-to">
+            <button id="weekday-apply">Apply</button>
+        </div>
+        <div class="chart-container">
+            <canvas id="weekday-chart"></canvas>
+        </div>
+        <div class="no-data" id="weekday-no-data" style="display:none;">No data available.</div>
+    </div>
+
+    <div class="panel">
+        <h2>Consumption Records</h2>
+        <div class="records-box">
+            <h3>Top Days &mdash; Highest Consumption</h3>
+            <table class="records-table">
+                <tbody id="records-highest-body"></tbody>
+            </table>
+            <div class="no-data" id="records-highest-empty" style="display:none;">No data available.</div>
+        </div>
+        <div class="records-box">
+            <h3>Top Days &mdash; Lowest Consumption</h3>
+            <table class="records-table">
+                <tbody id="records-lowest-body"></tbody>
+            </table>
+            <div class="no-data" id="records-lowest-empty" style="display:none;">No data available.</div>
+        </div>
     </div>
 {% endblock %}
 
@@ -88,7 +156,11 @@
     <script>
         let historyChart = null;
         let avgChart = null;
+        let weekdayChart = null;
         let activeRange = "24h";
+
+        // Day-of-week labels matching SQLite strftime('%w'): 0=Sunday … 6=Saturday
+        const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
         // --- Current Reading ---
         async function fetchCurrent() {
@@ -115,6 +187,15 @@
                     d.avg_kwh_per_month != null ? Number(d.avg_kwh_per_month).toFixed(0) : "--";
                 document.getElementById("stat-year").textContent =
                     d.kwh_this_year != null ? Number(d.kwh_this_year).toFixed(0) : "--";
+                const parts = [];
+                if (d.first_reading_date) {
+                    parts.push("Since " + d.first_reading_date);
+                    if (d.days_since_first_reading != null)
+                        parts.push(d.days_since_first_reading + " days recording");
+                    if (d.days_with_full_coverage != null)
+                        parts.push(d.days_with_full_coverage + " days fully covered");
+                }
+                document.getElementById("cur-coverage").textContent = parts.join(" · ");
             } catch (_) { /* silent */ }
         }
 
@@ -185,11 +266,20 @@
         }
 
         // --- Average by Hour of Day ---
-        async function fetchAverages() {
+        async function fetchAverages(fromDate, toDate) {
             try {
-                const resp = await fetch("/api/averages?days=30");
+                const params = new URLSearchParams();
+                if (fromDate) params.set("from_date", fromDate);
+                if (toDate) params.set("to_date", toDate);
+                const query = params.toString();
+                const resp = await fetch("/api/averages" + (query ? "?" + query : ""));
                 if (!resp.ok) return;
                 const body = await resp.json();
+
+                // On initial load, populate date pickers from API-resolved defaults
+                if (!fromDate && body.from_date) document.getElementById("avg-from").value = body.from_date;
+                if (!toDate && body.to_date) document.getElementById("avg-to").value = body.to_date;
+
                 const data = body.data || [];
                 const canvas = document.getElementById("avg-chart");
                 const noData = document.getElementById("avg-no-data");
@@ -238,6 +328,115 @@
             } catch (_) { /* silent */ }
         }
 
+        // --- Average by Day of Week ---
+        async function fetchWeekdayAverages(fromDate, toDate) {
+            try {
+                const params = new URLSearchParams();
+                if (fromDate) params.set("from_date", fromDate);
+                if (toDate) params.set("to_date", toDate);
+                const query = params.toString();
+                const resp = await fetch("/api/weekday_averages" + (query ? "?" + query : ""));
+                if (!resp.ok) return;
+                const body = await resp.json();
+
+                // On initial load, populate date pickers from API-resolved defaults
+                if (!fromDate && body.from_date) document.getElementById("weekday-from").value = body.from_date;
+                if (!toDate && body.to_date) document.getElementById("weekday-to").value = body.to_date;
+
+                const data = body.data || [];
+                const canvas = document.getElementById("weekday-chart");
+                const noData = document.getElementById("weekday-no-data");
+
+                if (data.length === 0) {
+                    weekdayChart = toggleChartVisibility(canvas, noData, weekdayChart);
+                    return;
+                }
+                showChart(canvas, noData);
+
+                // Fill all 7 days; days with no data stay at 0
+                const byDay = new Array(7).fill(0);
+                data.forEach(d => { byDay[d.day_of_week] = d.avg_kwh; });
+
+                if (weekdayChart) weekdayChart.destroy();
+                weekdayChart = new Chart(canvas, {
+                    type: "bar",
+                    data: {
+                        labels: DAY_LABELS,
+                        datasets: [{
+                            label: "Avg Consumption (kWh)",
+                            data: byDay,
+                            backgroundColor: "rgba(0,212,255,0.6)",
+                            borderColor: "#00d4ff",
+                            borderWidth: 1,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: {
+                                ticks: { color: "#8892b0" },
+                                grid: { color: "rgba(255,255,255,0.05)" }
+                            },
+                            y: {
+                                ticks: { color: "#8892b0" },
+                                grid: { color: "rgba(255,255,255,0.05)" },
+                                title: { display: true, text: "kWh", color: "#8892b0" }
+                            }
+                        }
+                    }
+                });
+            } catch (_) { /* silent */ }
+        }
+
+        // --- Consumption Records ---
+        function fillRecordsTable(tbodyId, emptyId, rows) {
+            const tbody = document.getElementById(tbodyId);
+            const empty = document.getElementById(emptyId);
+            tbody.innerHTML = "";
+            if (rows.length === 0) { empty.style.display = ""; return; }
+            empty.style.display = "none";
+            rows.forEach((row, i) => {
+                const tr = document.createElement("tr");
+                const rank = document.createElement("td");
+                rank.className = "rank";
+                rank.textContent = "#" + (i + 1);
+                const date = document.createElement("td");
+                date.textContent = row.date;
+                const value = document.createElement("td");
+                value.className = "value";
+                value.textContent = Number(row.kwh_consumed).toFixed(2) + " kWh";
+                tr.append(rank, date, value);
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function fetchRecords() {
+            try {
+                const resp = await fetch("/api/records");
+                if (!resp.ok) return;
+                const body = await resp.json();
+                fillRecordsTable("records-highest-body", "records-highest-empty", body.highest || []);
+                fillRecordsTable("records-lowest-body", "records-lowest-empty", body.lowest || []);
+            } catch (_) { /* silent */ }
+        }
+
+        // --- Apply date filters ---
+        document.getElementById("avg-apply").addEventListener("click", () => {
+            fetchAverages(
+                document.getElementById("avg-from").value,
+                document.getElementById("avg-to").value
+            );
+        });
+
+        document.getElementById("weekday-apply").addEventListener("click", () => {
+            fetchWeekdayAverages(
+                document.getElementById("weekday-from").value,
+                document.getElementById("weekday-to").value
+            );
+        });
+
         // --- Range toggle ---
         document.getElementById("range-buttons").addEventListener("click", (e) => {
             if (e.target.tagName !== "BUTTON") return;
@@ -251,7 +450,9 @@
         fetchCurrent();
         fetchStats();
         fetchHistory(activeRange);
-        fetchAverages();
+        fetchAverages();         // no args: API resolves defaults (earliest date → today)
+        fetchWeekdayAverages();  // no args: API resolves defaults
+        fetchRecords();
         setInterval(fetchCurrent, REFRESH_MS);
         setInterval(fetchStats, REFRESH_MS);
     </script>

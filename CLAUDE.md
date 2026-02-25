@@ -100,6 +100,35 @@ uv run pre-commit run --all-files # Manual run
 - **Test file naming:** mirror source files — `powerreader/mqtt.py` → `tests/test_mqtt.py`.
 - **Fixtures** live in `tests/conftest.py` (DB sessions, sample MQTT payloads, FastAPI test client).
 
+## Naming Conventions
+
+Follow **PEP 8** — *Style Guide for Python Code* by Guido van Rossum, Barry Warsaw, and Nick Coghlan — as the single authoritative standard. All rules below derive from it.
+
+| Construct | Convention | Examples |
+|---|---|---|
+| Modules / files | `snake_case` | `aggregation.py`, `db.py` |
+| Packages | `snake_case` (short) | `powerreader` |
+| Functions | `snake_case` | `get_coverage_stats()`, `compute_hourly_agg()` |
+| Variables | `snake_case` | `db_path`, `device_id`, `days_since` |
+| Constants | `UPPER_SNAKE_CASE` | `_MAX_DEVICE_ID_LEN`, `_RANGE_MAP` |
+| Classes | `PascalCase` | `Settings`, `TestStatsEndpoint` |
+| Exceptions | `PascalCase` + `Error` suffix | `ValueError`, `ParseError` |
+| Type aliases | `PascalCase` | `DeviceId = str` |
+| Internal symbols | leading `_` | `_connect()`, `_fetch_all()` |
+| Boolean-like vars | `is_` / `has_` prefix | `is_valid`, `has_data` |
+
+**Verb conventions for DB helpers** (applied consistently throughout `db.py`):
+- `get_` — read/query operations
+- `insert_` — write a single record
+- `compute_` — derive/aggregate data
+- `prune_` — delete expired data
+
+**Additional rules:**
+- Async functions need no special prefix — `async def` is the signal.
+- Avoid single-letter names except trivial loop indices (`i`, `k`).
+- Prefer full words over abbreviations (`device_id` not `dev_id`, `timestamp` not `ts`).
+- Test classes use `Test` prefix (pytest discovery convention, consistent with PascalCase): `TestStatsEndpoint`.
+
 ## Backup & Recovery
 
 All state is a single SQLite file at `DB_PATH` (default `/data/powerreader.db`), volume-mounted out of the container. Rely on NAS-level volume snapshots/backups. Recovery: stop container → replace DB file with backup → start container. Schema is auto-created on startup, so a fresh start with no DB file is also safe (just loses history). Optionally add a `VACUUM INTO` scheduled backup in a later phase.

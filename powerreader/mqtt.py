@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Matches the leading YYYY-MM-DDTHH:MM:SS portion of a Tasmota timestamp
 _TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]", re.ASCII)
 
@@ -129,7 +130,16 @@ def extract_device_id(topic: str) -> str:
 
 
 class MqttSubscriber:
-    """Manages the MQTT connection and message handling."""
+    """Manages the MQTT connection and message handling.
+
+    Threading model
+    ---------------
+    paho-mqtt runs its network loop in a background thread (via ``loop_start``).
+    All ``on_connect``, ``on_disconnect``, and ``on_message`` callbacks therefore
+    execute on that thread, not on the asyncio event loop.  Database writes are
+    async, so each callback bridges into the event loop with
+    ``asyncio.run_coroutine_threadsafe`` via :meth:`_async_execute`.
+    """
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
@@ -154,7 +164,12 @@ class MqttSubscriber:
         self._last_stored: dict[str, float] = {}
 
     def _async_execute(self, coro: object) -> None:
-        """Schedule a coroutine on the event loop from a callback thread."""
+        """Schedule a coroutine on the event loop from a callback thread.
+
+        paho-mqtt callbacks run on a non-async background thread, so we
+        cannot ``await`` directly — we hand the coroutine off to the asyncio
+        loop instead.
+        """
         if self._loop is not None:
             asyncio.run_coroutine_threadsafe(coro, self._loop)  # type: ignore[arg-type]
 

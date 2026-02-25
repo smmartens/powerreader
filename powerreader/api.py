@@ -7,7 +7,6 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from starlette.responses import StreamingResponse
 
 from powerreader import __version__, db
-from powerreader.aggregation import get_avg_by_time_of_day
 
 router = APIRouter(prefix="/api")
 
@@ -34,9 +33,15 @@ async def _resolve_device_id(db_path: str, device_id: str | None) -> str | None:
     return latest["device_id"] if latest else None
 
 
+# --- Utility endpoints ---
+
+
 @router.get("/version")
 async def version_info() -> dict:
     return {"version": __version__}
+
+
+# --- Reading endpoints ---
 
 
 @router.get("/current")
@@ -88,14 +93,48 @@ async def history(
 
 @router.get("/averages")
 async def averages(
-    request: Request, device_id: str | None = None, days: int = 30
+    request: Request,
+    device_id: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
 ) -> dict:
-    days = _clamp(days, 1, 3650)
+    from_date_parsed = _parse_date(from_date) if from_date is not None else None
+    to_date_parsed = _parse_date(to_date) if to_date is not None else None
+
     resolved = await _resolve_device_id(request.app.state.db_path, device_id)
     if resolved is None:
-        return {"device_id": device_id, "days": days, "data": []}
-    data = await get_avg_by_time_of_day(request.app.state.db_path, resolved, days)
-    return {"device_id": resolved, "days": days, "data": data}
+        today = date.today().isoformat()
+        return {
+            "device_id": device_id,
+            "from_date": from_date_parsed.isoformat() if from_date_parsed else today,
+            "to_date": to_date_parsed.isoformat() if to_date_parsed else today,
+            "data": [],
+        }
+
+    today = date.today()
+    if from_date_parsed is None:
+        earliest = await db.get_earliest_date(request.app.state.db_path, resolved)
+        from_date_parsed = date.fromisoformat(earliest) if earliest else today
+    if to_date_parsed is None:
+        to_date_parsed = today
+
+    if from_date_parsed > to_date_parsed:
+        raise HTTPException(
+            status_code=400, detail="from_date must not be after to_date"
+        )
+
+    data = await db.get_hourly_agg_by_hour_of_day(
+        request.app.state.db_path,
+        resolved,
+        from_date_parsed.isoformat() + "T00",
+        to_date_parsed.isoformat() + "T23",
+    )
+    return {
+        "device_id": resolved,
+        "from_date": from_date_parsed.isoformat(),
+        "to_date": to_date_parsed.isoformat(),
+        "data": data,
+    }
 
 
 @router.get("/stats")
@@ -107,10 +146,90 @@ async def consumption_stats(request: Request, device_id: str | None = None) -> d
             "avg_kwh_per_day": None,
             "avg_kwh_per_month": None,
             "kwh_this_year": None,
+            "first_reading_date": None,
+            "days_since_first_reading": None,
+            "days_with_full_coverage": None,
         }
     year = datetime.now().year
     stats = await db.get_consumption_stats(request.app.state.db_path, resolved, year)
-    return {"device_id": resolved, **stats}
+    coverage = await db.get_coverage_stats(request.app.state.db_path, resolved)
+    days_since = None
+    if coverage["first_reading_date"]:
+        first = date.fromisoformat(coverage["first_reading_date"])
+        days_since = (date.today() - first).days
+    return {
+        "device_id": resolved,
+        **stats,
+        **coverage,
+        "days_since_first_reading": days_since,
+    }
+
+
+# --- Analytics endpoints ---
+
+
+@router.get("/weekday_averages")
+async def weekday_averages(
+    request: Request,
+    device_id: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+) -> dict:
+    """Return average kWh per day-of-week (0=Sunday…6=Saturday) for a date range."""
+    from_date_parsed = _parse_date(from_date) if from_date is not None else None
+    to_date_parsed = _parse_date(to_date) if to_date is not None else None
+
+    resolved = await _resolve_device_id(request.app.state.db_path, device_id)
+    if resolved is None:
+        today = date.today().isoformat()
+        return {
+            "device_id": device_id,
+            "from_date": from_date_parsed.isoformat() if from_date_parsed else today,
+            "to_date": to_date_parsed.isoformat() if to_date_parsed else today,
+            "data": [],
+        }
+
+    today = date.today()
+    if from_date_parsed is None:
+        earliest = await db.get_earliest_date(request.app.state.db_path, resolved)
+        from_date_parsed = date.fromisoformat(earliest) if earliest else today
+    if to_date_parsed is None:
+        to_date_parsed = today
+
+    if from_date_parsed > to_date_parsed:
+        raise HTTPException(
+            status_code=400, detail="from_date must not be after to_date"
+        )
+
+    data = await db.get_daily_agg_by_day_of_week(
+        request.app.state.db_path,
+        resolved,
+        from_date_parsed.isoformat(),
+        to_date_parsed.isoformat(),
+    )
+    return {
+        "device_id": resolved,
+        "from_date": from_date_parsed.isoformat(),
+        "to_date": to_date_parsed.isoformat(),
+        "data": data,
+    }
+
+
+@router.get("/records")
+async def consumption_records(request: Request, device_id: str | None = None) -> dict:
+    resolved = await _resolve_device_id(request.app.state.db_path, device_id)
+    if resolved is None:
+        return {"device_id": device_id, "highest": [], "lowest": []}
+    highest = await db.get_days_by_consumption(
+        request.app.state.db_path, resolved, ascending=False
+    )
+    lowest = await db.get_days_by_consumption(
+        request.app.state.db_path, resolved, ascending=True
+    )
+    return {"device_id": resolved, "highest": highest, "lowest": lowest}
+
+
+# --- Log endpoint ---
 
 
 @router.get("/log")
@@ -132,7 +251,7 @@ _CSV_COLUMNS_HOURLY = [
 ]
 
 
-_MAX_EXPORT_DAYS = 3650
+_MAX_EXPORT_DAYS = 3650  # ~10 years; guards against accidental huge queries
 
 
 def _parse_date(value: str) -> date:
@@ -169,6 +288,8 @@ async def _generate_hourly_csv(
         buf.truncate()
 
 
+# Maps report type names to async CSV generator functions.
+# Add a new entry here to support additional export formats.
 _REPORT_GENERATORS = {
     "hourly": _generate_hourly_csv,
 }

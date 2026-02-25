@@ -4,6 +4,12 @@ A self-hosted power consumption monitor that subscribes to MQTT messages from a 
 
 ![Powerreader Dashboard](docs/dashboard103.png)
 
+## What's New in v1.1.0
+
+- **Day-of-week consumption chart** — New dashboard widget showing average daily kWh per weekday (Sunday–Saturday), with the same from/to date filter as the hourly averages chart.
+- **Consumption Records panel** — New dashboard panel with the top 5 highest and lowest consumption days, giving a quick view of your peak and off-peak days.
+- **Date range filter for hourly averages** — The "Average Consumption by Hour of Day" chart now has from/to date pickers. Default range is your first recorded reading to today.
+
 ## Hardware
 
 This project is built around a Tasmota-flashed ESP32C3 reading SML data from a smart meter. A ready-made device that works out of the box is the [Stromleser](https://stromleser.de/) — a compact ESP32-based SML reader that attaches to your meter's optical interface and publishes readings via MQTT. No soldering or custom firmware required.
@@ -16,7 +22,7 @@ Any Tasmota-compatible device that publishes SML or ENERGY data via MQTT will wo
 - SQLite storage with automatic hourly and daily aggregation
 - Configurable raw data retention with automatic pruning
 - REST API for current readings, history, and averages
-- Web dashboard with Chart.js visualizations (24h/7d/30d views)
+- Web dashboard with Chart.js visualizations (24h/7d/30d history, hourly and weekday averages, consumption records)
 - Downsample mode to reduce storage (store every message or 1/min)
 - Multi-meter ready via `device_id` column
 - CSV data export with custom date ranges
@@ -124,8 +130,10 @@ The calculation is straightforward:
 | `GET` | `/` | Web dashboard |
 | `GET` | `/api/current?device_id=meter1` | Latest reading for a device |
 | `GET` | `/api/history?range=24h&device_id=meter1` | Time-series data (`24h`, `7d`, `30d`) |
-| `GET` | `/api/averages?days=30&device_id=meter1` | Average power by hour of day |
-| `GET` | `/api/stats?device_id=meter1` | Consumption statistics (avg/day, avg/month, this year) |
+| `GET` | `/api/averages?from_date=2024-01-01&to_date=2024-01-31&device_id=meter1` | Average power by hour of day across a date range (defaults: earliest date → today) |
+| `GET` | `/api/weekday_averages?from_date=2024-01-01&to_date=2024-01-31&device_id=meter1` | Average kWh per day of week (0=Sun…6=Sat) across a date range |
+| `GET` | `/api/records?device_id=meter1` | Top 5 highest and lowest consumption days |
+| `GET` | `/api/stats?device_id=meter1` | Consumption statistics (avg/day, avg/month, this year, coverage) |
 | `GET` | `/api/log?limit=200` | MQTT message log (most recent first) |
 | `GET` | `/api/export?start=2024-01-01&end=2024-01-31&report=hourly` | CSV data export |
 | `GET` | `/api/version` | Application version |
@@ -237,15 +245,35 @@ uv sync
 # Run locally
 uv run uvicorn powerreader.main:app --reload --host 0.0.0.0 --port 8080
 
-# Run tests (80% coverage gate enforced)
-uv run pytest
-
 # Lint and format
 uv run ruff check .
 uv run ruff format .
 
-# Install pre-commit hooks (ruff + pytest)
+# Install pre-commit hooks (runs ruff + full test suite before every commit)
 uv run pre-commit install
+```
+
+### Testing
+
+The test suite uses **pytest** with **pytest-cov**. An **80% coverage gate** is enforced — CI and pre-commit hooks both fail if coverage drops below this threshold.
+
+**No external services required.** All tests run fully isolated:
+
+- Database tests use an in-memory or temporary SQLite file per test — no running database needed.
+- MQTT client interactions are mocked via `unittest.mock`.
+- API tests use FastAPI's `TestClient` with the DB overridden to a temporary file.
+
+**Test file naming** mirrors the source tree: `powerreader/db.py` → `tests/test_db.py`.
+
+**Shared fixtures** (initialized DB, seeded data, sample MQTT payloads, API client) live in `tests/conftest.py`. Check there before creating new fixtures — the existing ones cover most common scenarios.
+
+**When contributing a new feature**, add or extend the corresponding test file. Every public function in `powerreader/` should have test coverage.
+
+```bash
+uv run pytest                                        # all tests
+uv run pytest tests/test_db.py                       # single file
+uv run pytest -k "test_coverage"                     # single test by name
+uv run pytest --cov=powerreader --cov-fail-under=80  # with coverage report
 ```
 
 ### Branching Strategy

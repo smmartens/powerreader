@@ -85,15 +85,36 @@ class TestHistoryEndpoint:
 
 class TestAveragesEndpoint:
     def test_returns_hour_of_day_grouping(self, api_client):
-        resp = api_client.get("/api/averages?device_id=meter1&days=1000")
+        resp = api_client.get(
+            "/api/averages?device_id=meter1&from_date=2024-01-15&to_date=2024-01-16"
+        )
         assert resp.status_code == 200
         body = resp.json()
         assert body["device_id"] == "meter1"
-        assert body["days"] == 1000  # within 3650 cap, passed through
+        assert body["from_date"] == "2024-01-15"
+        assert body["to_date"] == "2024-01-16"
         assert isinstance(body["data"], list)
         assert len(body["data"]) > 0
         assert "hour_of_day" in body["data"][0]
         assert "avg_power_w" in body["data"][0]
+
+    def test_defaults_to_earliest_and_today(self, api_client):
+        resp = api_client.get("/api/averages?device_id=meter1")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["device_id"] == "meter1"
+        assert body["from_date"] == "2024-01-15"  # earliest date in test DB
+        assert len(body["data"]) > 0
+
+    def test_single_day(self, api_client):
+        resp = api_client.get(
+            "/api/averages?device_id=meter1&from_date=2024-01-15&to_date=2024-01-15"
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["from_date"] == "2024-01-15"
+        assert body["to_date"] == "2024-01-15"
+        assert len(body["data"]) > 0
 
     def test_empty_db_returns_empty_data(self, tmp_path):
         client = _make_empty_client(tmp_path)
@@ -101,12 +122,63 @@ class TestAveragesEndpoint:
         assert resp.status_code == 200
         assert resp.json()["data"] == []
 
-    def test_defaults(self, api_client):
-        resp = api_client.get("/api/averages?device_id=meter1")
+    def test_invalid_date_returns_400(self, api_client):
+        resp = api_client.get("/api/averages?from_date=not-a-date")
+        assert resp.status_code == 400
+
+    def test_from_after_to_returns_400(self, api_client):
+        resp = api_client.get(
+            "/api/averages?device_id=meter1&from_date=2024-01-16&to_date=2024-01-15"
+        )
+        assert resp.status_code == 400
+
+
+class TestWeekdayAveragesEndpoint:
+    def test_returns_day_of_week_grouping(self, api_client):
+        resp = api_client.get(
+            "/api/weekday_averages?device_id=meter1&from_date=2024-01-15&to_date=2024-01-16"
+        )
         assert resp.status_code == 200
         body = resp.json()
         assert body["device_id"] == "meter1"
-        assert body["days"] == 30
+        assert body["from_date"] == "2024-01-15"
+        assert body["to_date"] == "2024-01-16"
+        assert isinstance(body["data"], list)
+        assert len(body["data"]) == 2  # Monday and Tuesday only
+        assert "day_of_week" in body["data"][0]
+        assert "avg_kwh" in body["data"][0]
+        assert "days_covered" in body["data"][0]
+
+    def test_weekday_values(self, api_client):
+        body = api_client.get(
+            "/api/weekday_averages?device_id=meter1&from_date=2024-01-15&to_date=2024-01-16"
+        ).json()
+        # 2024-01-15 = Monday (1), 2024-01-16 = Tuesday (2)
+        assert body["data"][0]["day_of_week"] == 1
+        assert body["data"][1]["day_of_week"] == 2
+
+    def test_defaults_to_earliest_and_today(self, api_client):
+        resp = api_client.get("/api/weekday_averages?device_id=meter1")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["from_date"] == "2024-01-15"  # earliest date in test DB
+        assert len(body["data"]) > 0
+
+    def test_empty_db_returns_empty_data(self, tmp_path):
+        client = _make_empty_client(tmp_path)
+        resp = client.get("/api/weekday_averages?device_id=meter1")
+        assert resp.status_code == 200
+        assert resp.json()["data"] == []
+
+    def test_invalid_date_returns_400(self, api_client):
+        resp = api_client.get("/api/weekday_averages?from_date=not-a-date")
+        assert resp.status_code == 400
+
+    def test_from_after_to_returns_400(self, api_client):
+        resp = api_client.get(
+            "/api/weekday_averages?device_id=meter1&from_date=2024-01-16&to_date=2024-01-15"
+        )
+        assert resp.status_code == 400
 
 
 class TestStatsEndpoint:
@@ -119,6 +191,15 @@ class TestStatsEndpoint:
         assert body["avg_kwh_per_month"] is not None
         assert body["kwh_this_year"] is not None
 
+    def test_returns_coverage_stats(self, api_client):
+        resp = api_client.get("/api/stats?device_id=meter1")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["first_reading_date"] == "2024-01-15"
+        assert isinstance(body["days_since_first_reading"], int)
+        assert body["days_since_first_reading"] > 0
+        assert isinstance(body["days_with_full_coverage"], int)
+
     def test_empty_db_returns_nulls(self, tmp_path):
         client = _make_empty_client(tmp_path)
         resp = client.get("/api/stats?device_id=meter1")
@@ -127,11 +208,50 @@ class TestStatsEndpoint:
         assert body["avg_kwh_per_day"] is None
         assert body["avg_kwh_per_month"] is None
         assert body["kwh_this_year"] is None
+        assert body["first_reading_date"] is None
+        assert body["days_since_first_reading"] is None
+        assert body["days_with_full_coverage"] == 0
 
     def test_auto_detects_device(self, api_client):
         resp = api_client.get("/api/stats")
         assert resp.status_code == 200
         assert resp.json()["device_id"] == "meter1"
+
+
+class TestRecordsEndpoint:
+    def test_returns_highest_and_lowest(self, api_client):
+        resp = api_client.get("/api/records?device_id=meter1")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["device_id"] == "meter1"
+        assert isinstance(body["highest"], list)
+        assert isinstance(body["lowest"], list)
+
+    def test_highest_ordered_descending(self, api_client):
+        highest = api_client.get("/api/records?device_id=meter1").json()["highest"]
+        assert len(highest) == 2
+        assert highest[0]["date"] == "2024-01-15"  # 8.0 kWh
+        assert highest[1]["date"] == "2024-01-16"  # 5.0 kWh
+
+    def test_lowest_ordered_ascending(self, api_client):
+        lowest = api_client.get("/api/records?device_id=meter1").json()["lowest"]
+        assert len(lowest) == 2
+        assert lowest[0]["date"] == "2024-01-16"  # 5.0 kWh
+        assert lowest[1]["date"] == "2024-01-15"  # 8.0 kWh
+
+    def test_fewer_than_five_days_returns_all(self, api_client):
+        body = api_client.get("/api/records?device_id=meter1").json()
+        # test DB has 2 days, so both lists have exactly 2 entries
+        assert len(body["highest"]) == 2
+        assert len(body["lowest"]) == 2
+
+    def test_empty_db_returns_empty_lists(self, tmp_path):
+        client = _make_empty_client(tmp_path)
+        resp = client.get("/api/records")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["highest"] == []
+        assert body["lowest"] == []
 
 
 class TestLogEndpoint:
@@ -197,12 +317,6 @@ class TestParameterClamping:
         client = _make_empty_client(tmp_path)
         resp = client.get("/api/log?limit=-5")
         assert resp.status_code == 200
-
-    def test_averages_days_clamped_to_3650(self, tmp_path):
-        client = _make_empty_client(tmp_path)
-        resp = client.get("/api/averages?days=99999")
-        assert resp.status_code == 200
-        assert resp.json()["days"] == 3650
 
 
 class TestExportEndpoint:

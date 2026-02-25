@@ -21,6 +21,13 @@ _templates = Jinja2Templates(directory=_PKG_DIR / "templates")
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Manage application startup and shutdown.
+
+    Startup order:
+      1. init_db  — create / migrate schema
+      2. setup_scheduler — start aggregation and pruning jobs
+      3. MqttSubscriber.start — connect to broker (non-fatal if unreachable)
+    """
     settings = Settings()
     _app.state.db_path = settings.db_path
     await init_db(settings.db_path)
@@ -34,6 +41,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to every response (CSP, framing, MIME sniffing)."""
+
     async def dispatch(self, request, call_next):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
