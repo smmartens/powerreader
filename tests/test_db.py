@@ -132,15 +132,16 @@ async def test_get_coverage_stats_first_date(seeded_db: str) -> None:
 async def test_get_coverage_stats_counts_full_coverage_days(
     initialized_db: str,
 ) -> None:
-    # Day with two hours each having 3 readings → qualifies as full coverage
-    for hour in [10, 14]:
+    # Full day: all 24 hours with 3 readings each → qualifies
+    for hour in range(24):
         for minute in [0, 20, 40]:
             ts = f"2024-03-01T{hour:02d}:{minute:02d}:00"
             base = 1000.0 + hour + minute / 100
             await insert_reading(initialized_db, "meter1", ts, base)
-    # Second day with one sparse hour (only 2 readings) → does not qualify
-    await insert_reading(initialized_db, "meter1", "2024-03-02T10:00:00", 1010.0)
-    await insert_reading(initialized_db, "meter1", "2024-03-02T10:20:00", 1011.0)
+    # Partial day: only 2 hours present → does not qualify (COUNT(*) != 24)
+    await insert_reading(initialized_db, "meter1", "2024-03-02T10:00:00", 2000.0)
+    await insert_reading(initialized_db, "meter1", "2024-03-02T10:20:00", 2001.0)
+    await insert_reading(initialized_db, "meter1", "2024-03-02T10:40:00", 2002.0)
 
     from powerreader.aggregation import compute_hourly_agg
 

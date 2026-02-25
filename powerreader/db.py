@@ -288,8 +288,8 @@ async def insert_mqtt_log(
 async def get_coverage_stats(db_path: str, device_id: str) -> dict:
     """Return coverage stats: first date in hourly_agg and count of fully-covered days.
 
-    A day is 'fully covered' when every recorded hourly bucket has reading_count >= 3,
-    indicating reliable data throughout all active hours of that day.
+    A day is 'fully covered' when all 24 hourly buckets exist and each has
+    reading_count >= 3, indicating complete and reliable data for that day.
     """
     async with _connect(db_path, row_factory=True) as db:
         cursor = await db.execute(
@@ -309,7 +309,7 @@ async def get_coverage_stats(db_path: str, device_id: str) -> dict:
                 FROM hourly_agg
                 WHERE device_id = ?
                 GROUP BY date
-                HAVING MIN(reading_count) >= 3
+                HAVING COUNT(*) = 24 AND MIN(reading_count) >= 3
             )
             """,
             (device_id,),
