@@ -285,6 +285,21 @@ async def insert_mqtt_log(
         return cursor.lastrowid  # type: ignore[return-value]
 
 
+async def get_days_by_consumption(
+    db_path: str, device_id: str, limit: int = 5, *, ascending: bool = False
+) -> list[dict]:
+    """Return top N days by kWh consumed, ordered highest-first or lowest-first."""
+    order = "ASC" if ascending else "DESC"
+    async with _connect(db_path, row_factory=True) as db:
+        cursor = await db.execute(
+            "SELECT date, kwh_consumed FROM daily_agg"
+            " WHERE device_id = ? AND kwh_consumed IS NOT NULL"
+            " ORDER BY kwh_consumed " + order + " LIMIT ?",
+            (device_id, limit),
+        )
+        return await _fetch_all(cursor)
+
+
 async def get_coverage_stats(db_path: str, device_id: str) -> dict:
     """Return coverage stats: first date in hourly_agg and count of fully-covered days.
 

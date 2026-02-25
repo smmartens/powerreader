@@ -170,6 +170,42 @@ class TestStatsEndpoint:
         assert resp.json()["device_id"] == "meter1"
 
 
+class TestRecordsEndpoint:
+    def test_returns_highest_and_lowest(self, api_client):
+        resp = api_client.get("/api/records?device_id=meter1")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["device_id"] == "meter1"
+        assert isinstance(body["highest"], list)
+        assert isinstance(body["lowest"], list)
+
+    def test_highest_ordered_descending(self, api_client):
+        highest = api_client.get("/api/records?device_id=meter1").json()["highest"]
+        assert len(highest) == 2
+        assert highest[0]["date"] == "2024-01-15"  # 8.0 kWh
+        assert highest[1]["date"] == "2024-01-16"  # 5.0 kWh
+
+    def test_lowest_ordered_ascending(self, api_client):
+        lowest = api_client.get("/api/records?device_id=meter1").json()["lowest"]
+        assert len(lowest) == 2
+        assert lowest[0]["date"] == "2024-01-16"  # 5.0 kWh
+        assert lowest[1]["date"] == "2024-01-15"  # 8.0 kWh
+
+    def test_fewer_than_five_days_returns_all(self, api_client):
+        body = api_client.get("/api/records?device_id=meter1").json()
+        # test DB has 2 days, so both lists have exactly 2 entries
+        assert len(body["highest"]) == 2
+        assert len(body["lowest"]) == 2
+
+    def test_empty_db_returns_empty_lists(self, tmp_path):
+        client = _make_empty_client(tmp_path)
+        resp = client.get("/api/records")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["highest"] == []
+        assert body["lowest"] == []
+
+
 class TestLogEndpoint:
     def test_returns_log_entries(self, tmp_path):
         client = _make_log_client(

@@ -53,6 +53,14 @@
             cursor: pointer;
         }
         .date-filter button:hover { background: #1a5276; }
+        .records-box { background: #0f3460; border-radius: 6px; padding: 0.75rem; margin-bottom: 0.75rem; }
+        .records-box:last-child { margin-bottom: 0; }
+        .records-box h3 { font-size: 0.85rem; color: #8892b0; margin-bottom: 0.5rem; }
+        .records-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+        .records-table td { padding: 0.3rem 0.5rem; }
+        .records-table tr:nth-child(even) { background: rgba(255,255,255,0.03); }
+        .records-table .rank { color: #00d4ff; font-weight: 700; width: 2rem; }
+        .records-table .value { text-align: right; }
     </style>
 {% endblock %}
 
@@ -107,6 +115,24 @@
             <canvas id="avg-chart"></canvas>
         </div>
         <div class="no-data" id="avg-no-data" style="display:none;">No average data available.</div>
+    </div>
+
+    <div class="panel">
+        <h2>Consumption Records</h2>
+        <div class="records-box">
+            <h3>Top Days &mdash; Highest Consumption</h3>
+            <table class="records-table">
+                <tbody id="records-highest-body"></tbody>
+            </table>
+            <div class="no-data" id="records-highest-empty" style="display:none;">No data available.</div>
+        </div>
+        <div class="records-box">
+            <h3>Top Days &mdash; Lowest Consumption</h3>
+            <table class="records-table">
+                <tbody id="records-lowest-body"></tbody>
+            </table>
+            <div class="no-data" id="records-lowest-empty" style="display:none;">No data available.</div>
+        </div>
     </div>
 {% endblock %}
 
@@ -283,6 +309,38 @@
             } catch (_) { /* silent */ }
         }
 
+        // --- Consumption Records ---
+        function fillRecordsTable(tbodyId, emptyId, rows) {
+            const tbody = document.getElementById(tbodyId);
+            const empty = document.getElementById(emptyId);
+            tbody.innerHTML = "";
+            if (rows.length === 0) { empty.style.display = ""; return; }
+            empty.style.display = "none";
+            rows.forEach((row, i) => {
+                const tr = document.createElement("tr");
+                const rank = document.createElement("td");
+                rank.className = "rank";
+                rank.textContent = "#" + (i + 1);
+                const date = document.createElement("td");
+                date.textContent = row.date;
+                const value = document.createElement("td");
+                value.className = "value";
+                value.textContent = Number(row.kwh_consumed).toFixed(2) + " kWh";
+                tr.append(rank, date, value);
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function fetchRecords() {
+            try {
+                const resp = await fetch("/api/records");
+                if (!resp.ok) return;
+                const body = await resp.json();
+                fillRecordsTable("records-highest-body", "records-highest-empty", body.highest || []);
+                fillRecordsTable("records-lowest-body", "records-lowest-empty", body.lowest || []);
+            } catch (_) { /* silent */ }
+        }
+
         // --- Apply date filter ---
         document.getElementById("avg-apply").addEventListener("click", () => {
             fetchAverages(
@@ -305,6 +363,7 @@
         fetchStats();
         fetchHistory(activeRange);
         fetchAverages();  // no args: API resolves defaults (earliest date → today)
+        fetchRecords();
         setInterval(fetchCurrent, REFRESH_MS);
         setInterval(fetchStats, REFRESH_MS);
     </script>

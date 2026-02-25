@@ -4,6 +4,7 @@ import pytest
 from powerreader.db import (
     get_consumption_stats,
     get_coverage_stats,
+    get_days_by_consumption,
     get_earliest_date,
     get_latest_reading,
     get_mqtt_log,
@@ -110,6 +111,48 @@ async def test_insert_reading_and_log(initialized_db: str) -> None:
     assert len(logs) == 1
     assert logs[0]["status"] == "ok"
     assert logs[0]["summary"] == "1000.0kWh"
+
+
+@pytest.mark.asyncio
+async def test_get_days_by_consumption_highest(seeded_db: str) -> None:
+    from powerreader.aggregation import compute_daily_agg, compute_hourly_agg
+
+    await compute_hourly_agg(seeded_db)
+    await compute_daily_agg(seeded_db)
+    rows = await get_days_by_consumption(seeded_db, "meter1")
+    assert len(rows) == 2
+    assert rows[0]["date"] == "2024-01-15"  # 8.0 kWh — highest
+    assert rows[1]["date"] == "2024-01-16"  # 5.0 kWh
+    assert rows[0]["kwh_consumed"] > rows[1]["kwh_consumed"]
+
+
+@pytest.mark.asyncio
+async def test_get_days_by_consumption_lowest(seeded_db: str) -> None:
+    from powerreader.aggregation import compute_daily_agg, compute_hourly_agg
+
+    await compute_hourly_agg(seeded_db)
+    await compute_daily_agg(seeded_db)
+    rows = await get_days_by_consumption(seeded_db, "meter1", ascending=True)
+    assert len(rows) == 2
+    assert rows[0]["date"] == "2024-01-16"  # 5.0 kWh — lowest
+    assert rows[1]["date"] == "2024-01-15"  # 8.0 kWh
+
+
+@pytest.mark.asyncio
+async def test_get_days_by_consumption_limit(seeded_db: str) -> None:
+    from powerreader.aggregation import compute_daily_agg, compute_hourly_agg
+
+    await compute_hourly_agg(seeded_db)
+    await compute_daily_agg(seeded_db)
+    rows = await get_days_by_consumption(seeded_db, "meter1", limit=1)
+    assert len(rows) == 1
+    assert rows[0]["date"] == "2024-01-15"
+
+
+@pytest.mark.asyncio
+async def test_get_days_by_consumption_empty(initialized_db: str) -> None:
+    rows = await get_days_by_consumption(initialized_db, "meter1")
+    assert rows == []
 
 
 @pytest.mark.asyncio

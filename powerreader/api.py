@@ -159,6 +159,20 @@ async def consumption_stats(request: Request, device_id: str | None = None) -> d
     }
 
 
+@router.get("/records")
+async def consumption_records(request: Request, device_id: str | None = None) -> dict:
+    resolved = await _resolve_device_id(request.app.state.db_path, device_id)
+    if resolved is None:
+        return {"device_id": device_id, "highest": [], "lowest": []}
+    highest = await db.get_days_by_consumption(
+        request.app.state.db_path, resolved, ascending=False
+    )
+    lowest = await db.get_days_by_consumption(
+        request.app.state.db_path, resolved, ascending=True
+    )
+    return {"device_id": resolved, "highest": highest, "lowest": lowest}
+
+
 @router.get("/log")
 async def mqtt_log(request: Request, limit: int = 200) -> dict:
     limit = _clamp(limit, 1, 1000)
