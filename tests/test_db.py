@@ -3,6 +3,7 @@ import pytest
 
 from powerreader.db import (
     get_consumption_stats,
+    get_coverage_stats,
     get_earliest_date,
     get_latest_reading,
     get_mqtt_log,
@@ -109,6 +110,44 @@ async def test_insert_reading_and_log(initialized_db: str) -> None:
     assert len(logs) == 1
     assert logs[0]["status"] == "ok"
     assert logs[0]["summary"] == "1000.0kWh"
+
+
+@pytest.mark.asyncio
+async def test_get_coverage_stats_empty(initialized_db: str) -> None:
+    result = await get_coverage_stats(initialized_db, "meter1")
+    assert result["first_reading_date"] is None
+    assert result["days_with_full_coverage"] == 0
+
+
+@pytest.mark.asyncio
+async def test_get_coverage_stats_first_date(seeded_db: str) -> None:
+    from powerreader.aggregation import compute_hourly_agg
+
+    await compute_hourly_agg(seeded_db)
+    result = await get_coverage_stats(seeded_db, "meter1")
+    assert result["first_reading_date"] == "2024-01-15"
+
+
+@pytest.mark.asyncio
+async def test_get_coverage_stats_counts_full_coverage_days(
+    initialized_db: str,
+) -> None:
+    # Day with two hours each having 3 readings → qualifies as full coverage
+    for hour in [10, 14]:
+        for minute in [0, 20, 40]:
+            ts = f"2024-03-01T{hour:02d}:{minute:02d}:00"
+            base = 1000.0 + hour + minute / 100
+            await insert_reading(initialized_db, "meter1", ts, base)
+    # Second day with one sparse hour (only 2 readings) → does not qualify
+    await insert_reading(initialized_db, "meter1", "2024-03-02T10:00:00", 1010.0)
+    await insert_reading(initialized_db, "meter1", "2024-03-02T10:20:00", 1011.0)
+
+    from powerreader.aggregation import compute_hourly_agg
+
+    await compute_hourly_agg(initialized_db)
+    result = await get_coverage_stats(initialized_db, "meter1")
+    assert result["first_reading_date"] == "2024-03-01"
+    assert result["days_with_full_coverage"] == 1  # only 2024-03-01 qualifies
 
 
 @pytest.mark.asyncio

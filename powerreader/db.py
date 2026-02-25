@@ -285,6 +285,41 @@ async def insert_mqtt_log(
         return cursor.lastrowid  # type: ignore[return-value]
 
 
+async def get_coverage_stats(db_path: str, device_id: str) -> dict:
+    """Return coverage stats: first date in hourly_agg and count of fully-covered days.
+
+    A day is 'fully covered' when every recorded hourly bucket has reading_count >= 3,
+    indicating reliable data throughout all active hours of that day.
+    """
+    async with _connect(db_path, row_factory=True) as db:
+        cursor = await db.execute(
+            "SELECT substr(MIN(hour), 1, 10) AS first_reading_date"
+            " FROM hourly_agg WHERE device_id = ?",
+            (device_id,),
+        )
+        row = await cursor.fetchone()
+        val = row["first_reading_date"] if row else None
+        first_date = val if val else None
+
+        cursor = await db.execute(
+            """
+            SELECT COUNT(*) AS days_with_full_coverage
+            FROM (
+                SELECT substr(hour, 1, 10) AS date
+                FROM hourly_agg
+                WHERE device_id = ?
+                GROUP BY date
+                HAVING MIN(reading_count) >= 3
+            )
+            """,
+            (device_id,),
+        )
+        row = await cursor.fetchone()
+        full_coverage = row["days_with_full_coverage"] if row else 0
+
+    return {"first_reading_date": first_date, "days_with_full_coverage": full_coverage}
+
+
 async def get_earliest_date(db_path: str, device_id: str) -> str | None:
     """Return the earliest date in hourly_agg for a device (YYYY-MM-DD), or None."""
     async with _connect(db_path, row_factory=True) as db:

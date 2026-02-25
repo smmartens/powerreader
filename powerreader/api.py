@@ -140,10 +140,23 @@ async def consumption_stats(request: Request, device_id: str | None = None) -> d
             "avg_kwh_per_day": None,
             "avg_kwh_per_month": None,
             "kwh_this_year": None,
+            "first_reading_date": None,
+            "days_since_first_reading": None,
+            "days_with_full_coverage": None,
         }
     year = datetime.now().year
     stats = await db.get_consumption_stats(request.app.state.db_path, resolved, year)
-    return {"device_id": resolved, **stats}
+    coverage = await db.get_coverage_stats(request.app.state.db_path, resolved)
+    days_since = None
+    if coverage["first_reading_date"]:
+        first = date.fromisoformat(coverage["first_reading_date"])
+        days_since = (date.today() - first).days
+    return {
+        "device_id": resolved,
+        **stats,
+        **coverage,
+        "days_since_first_reading": days_since,
+    }
 
 
 @router.get("/log")

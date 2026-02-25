@@ -143,6 +143,15 @@ class TestStatsEndpoint:
         assert body["avg_kwh_per_month"] is not None
         assert body["kwh_this_year"] is not None
 
+    def test_returns_coverage_stats(self, api_client):
+        resp = api_client.get("/api/stats?device_id=meter1")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["first_reading_date"] == "2024-01-15"
+        assert isinstance(body["days_since_first_reading"], int)
+        assert body["days_since_first_reading"] > 0
+        assert isinstance(body["days_with_full_coverage"], int)
+
     def test_empty_db_returns_nulls(self, tmp_path):
         client = _make_empty_client(tmp_path)
         resp = client.get("/api/stats?device_id=meter1")
@@ -151,6 +160,9 @@ class TestStatsEndpoint:
         assert body["avg_kwh_per_day"] is None
         assert body["avg_kwh_per_month"] is None
         assert body["kwh_this_year"] is None
+        assert body["first_reading_date"] is None
+        assert body["days_since_first_reading"] is None
+        assert body["days_with_full_coverage"] == 0
 
     def test_auto_detects_device(self, api_client):
         resp = api_client.get("/api/stats")

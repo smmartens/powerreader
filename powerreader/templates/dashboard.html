@@ -76,6 +76,18 @@
                 <div class="value" id="stat-year">--</div>
                 <div class="label">This Year (kWh)</div>
             </div>
+            <div class="reading-card">
+                <div class="value" id="stat-first-date">--</div>
+                <div class="label">First Recording</div>
+            </div>
+            <div class="reading-card">
+                <div class="value" id="stat-days-recording">--</div>
+                <div class="label">Days Recording</div>
+            </div>
+            <div class="reading-card">
+                <div class="value" id="stat-full-coverage">--</div>
+                <div class="label">Full Coverage Days</div>
+            </div>
         </div>
         <div class="timestamp" id="cur-timestamp"></div>
     </div>
@@ -141,6 +153,12 @@
                     d.avg_kwh_per_month != null ? Number(d.avg_kwh_per_month).toFixed(0) : "--";
                 document.getElementById("stat-year").textContent =
                     d.kwh_this_year != null ? Number(d.kwh_this_year).toFixed(0) : "--";
+                document.getElementById("stat-first-date").textContent =
+                    d.first_reading_date != null ? d.first_reading_date : "--";
+                document.getElementById("stat-days-recording").textContent =
+                    d.days_since_first_reading != null ? d.days_since_first_reading : "--";
+                document.getElementById("stat-full-coverage").textContent =
+                    d.days_with_full_coverage != null ? d.days_with_full_coverage : "--";
             } catch (_) { /* silent */ }
         }
 
