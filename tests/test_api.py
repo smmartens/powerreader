@@ -133,6 +133,54 @@ class TestAveragesEndpoint:
         assert resp.status_code == 400
 
 
+class TestWeekdayAveragesEndpoint:
+    def test_returns_day_of_week_grouping(self, api_client):
+        resp = api_client.get(
+            "/api/weekday_averages?device_id=meter1&from_date=2024-01-15&to_date=2024-01-16"
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["device_id"] == "meter1"
+        assert body["from_date"] == "2024-01-15"
+        assert body["to_date"] == "2024-01-16"
+        assert isinstance(body["data"], list)
+        assert len(body["data"]) == 2  # Monday and Tuesday only
+        assert "day_of_week" in body["data"][0]
+        assert "avg_kwh" in body["data"][0]
+        assert "days_covered" in body["data"][0]
+
+    def test_weekday_values(self, api_client):
+        body = api_client.get(
+            "/api/weekday_averages?device_id=meter1&from_date=2024-01-15&to_date=2024-01-16"
+        ).json()
+        # 2024-01-15 = Monday (1), 2024-01-16 = Tuesday (2)
+        assert body["data"][0]["day_of_week"] == 1
+        assert body["data"][1]["day_of_week"] == 2
+
+    def test_defaults_to_earliest_and_today(self, api_client):
+        resp = api_client.get("/api/weekday_averages?device_id=meter1")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["from_date"] == "2024-01-15"  # earliest date in test DB
+        assert len(body["data"]) > 0
+
+    def test_empty_db_returns_empty_data(self, tmp_path):
+        client = _make_empty_client(tmp_path)
+        resp = client.get("/api/weekday_averages?device_id=meter1")
+        assert resp.status_code == 200
+        assert resp.json()["data"] == []
+
+    def test_invalid_date_returns_400(self, api_client):
+        resp = api_client.get("/api/weekday_averages?from_date=not-a-date")
+        assert resp.status_code == 400
+
+    def test_from_after_to_returns_400(self, api_client):
+        resp = api_client.get(
+            "/api/weekday_averages?device_id=meter1&from_date=2024-01-16&to_date=2024-01-15"
+        )
+        assert resp.status_code == 400
+
+
 class TestStatsEndpoint:
     def test_returns_stats(self, api_client):
         resp = api_client.get("/api/stats?device_id=meter1")

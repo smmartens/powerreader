@@ -4,6 +4,7 @@ import pytest
 from powerreader.db import (
     get_consumption_stats,
     get_coverage_stats,
+    get_daily_agg_by_day_of_week,
     get_days_by_consumption,
     get_earliest_date,
     get_latest_reading,
@@ -192,6 +193,33 @@ async def test_get_coverage_stats_counts_full_coverage_days(
     result = await get_coverage_stats(initialized_db, "meter1")
     assert result["first_reading_date"] == "2024-03-01"
     assert result["days_with_full_coverage"] == 1  # only 2024-03-01 qualifies
+
+
+@pytest.mark.asyncio
+async def test_get_daily_agg_by_day_of_week(seeded_db: str) -> None:
+    from powerreader.aggregation import compute_daily_agg, compute_hourly_agg
+
+    await compute_hourly_agg(seeded_db)
+    await compute_daily_agg(seeded_db)
+    # 2024-01-15 = Monday (day 1), 2024-01-16 = Tuesday (day 2)
+    rows = await get_daily_agg_by_day_of_week(
+        seeded_db, "meter1", "2024-01-15", "2024-01-16"
+    )
+    assert len(rows) == 2
+    assert rows[0]["day_of_week"] == 1  # Monday
+    assert rows[1]["day_of_week"] == 2  # Tuesday
+    assert rows[0]["avg_kwh"] == pytest.approx(8.0)
+    assert rows[1]["avg_kwh"] == pytest.approx(5.0)
+    assert rows[0]["days_covered"] == 1
+    assert rows[1]["days_covered"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_daily_agg_by_day_of_week_empty(initialized_db: str) -> None:
+    rows = await get_daily_agg_by_day_of_week(
+        initialized_db, "meter1", "2024-01-15", "2024-01-16"
+    )
+    assert rows == []
 
 
 @pytest.mark.asyncio

@@ -238,6 +238,29 @@ async def get_daily_agg(
 # --- Analytics ---
 
 
+async def get_daily_agg_by_day_of_week(
+    db_path: str, device_id: str, start: str, end: str
+) -> list[dict]:
+    """Aggregate daily_agg rows by day-of-week (0=Sunday … 6=Saturday).
+
+    Returns one row per weekday that has data, with the average kWh consumed
+    across all occurrences of that weekday within [start, end].
+    """
+    async with _connect(db_path, row_factory=True) as db:
+        cursor = await db.execute(
+            """SELECT
+                CAST(strftime('%w', date) AS INTEGER) AS day_of_week,
+                ROUND(AVG(kwh_consumed), 3) AS avg_kwh,
+                COUNT(*) AS days_covered
+            FROM daily_agg
+            WHERE device_id = ? AND date >= ? AND date <= ?
+            GROUP BY day_of_week
+            ORDER BY day_of_week""",
+            (device_id, start, end),
+        )
+        return await _fetch_all(cursor)
+
+
 async def get_consumption_stats(db_path: str, device_id: str, year: int) -> dict:
     """Return consumption stats: avg kWh/day, avg kWh/month, kWh this year."""
     year_start = f"{year}-01-01"

@@ -168,6 +168,53 @@ async def consumption_stats(request: Request, device_id: str | None = None) -> d
 # --- Analytics endpoints ---
 
 
+@router.get("/weekday_averages")
+async def weekday_averages(
+    request: Request,
+    device_id: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+) -> dict:
+    """Return average kWh per day-of-week (0=Sunday…6=Saturday) for a date range."""
+    from_date_parsed = _parse_date(from_date) if from_date is not None else None
+    to_date_parsed = _parse_date(to_date) if to_date is not None else None
+
+    resolved = await _resolve_device_id(request.app.state.db_path, device_id)
+    if resolved is None:
+        today = date.today().isoformat()
+        return {
+            "device_id": device_id,
+            "from_date": from_date_parsed.isoformat() if from_date_parsed else today,
+            "to_date": to_date_parsed.isoformat() if to_date_parsed else today,
+            "data": [],
+        }
+
+    today = date.today()
+    if from_date_parsed is None:
+        earliest = await db.get_earliest_date(request.app.state.db_path, resolved)
+        from_date_parsed = date.fromisoformat(earliest) if earliest else today
+    if to_date_parsed is None:
+        to_date_parsed = today
+
+    if from_date_parsed > to_date_parsed:
+        raise HTTPException(
+            status_code=400, detail="from_date must not be after to_date"
+        )
+
+    data = await db.get_daily_agg_by_day_of_week(
+        request.app.state.db_path,
+        resolved,
+        from_date_parsed.isoformat(),
+        to_date_parsed.isoformat(),
+    )
+    return {
+        "device_id": resolved,
+        "from_date": from_date_parsed.isoformat(),
+        "to_date": to_date_parsed.isoformat(),
+        "data": data,
+    }
+
+
 @router.get("/records")
 async def consumption_records(request: Request, device_id: str | None = None) -> dict:
     resolved = await _resolve_device_id(request.app.state.db_path, device_id)
