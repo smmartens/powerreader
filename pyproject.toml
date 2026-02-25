@@ -1,6 +1,6 @@
 [project]
 name = "powerreader"
-version = "1.0.3"
+version = "1.1.0"
 description = "Self-hosted power consumption monitor via MQTT and Tasmota"
 requires-python = ">=3.12"
 dependencies = [
