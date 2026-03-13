@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from powerreader.db import _connect
@@ -53,13 +55,21 @@ async def compute_daily_agg(db_path: str) -> int:
         return cursor.rowcount
 
 
+def _prune_threshold(retention_days: int) -> str:
+    try:
+        cutoff = datetime.now() - timedelta(days=retention_days)
+    except OverflowError:
+        cutoff = datetime.min
+    return cutoff.isoformat(timespec="seconds")
+
+
 async def prune_raw_readings(db_path: str, retention_days: int) -> int:
     """Delete raw readings older than retention_days. Returns rows deleted."""
+    threshold = _prune_threshold(retention_days)
     async with _connect(db_path) as db:
         cursor = await db.execute(
-            "DELETE FROM raw_readings"
-            " WHERE timestamp < datetime('now', 'localtime', ?)",
-            (f"-{retention_days} days",),
+            "DELETE FROM raw_readings WHERE timestamp < ?",
+            (threshold,),
         )
         await db.commit()
         return cursor.rowcount
@@ -67,10 +77,11 @@ async def prune_raw_readings(db_path: str, retention_days: int) -> int:
 
 async def prune_mqtt_log(db_path: str, retention_days: int) -> int:
     """Delete mqtt_log entries older than retention_days. Returns rows deleted."""
+    threshold = _prune_threshold(retention_days)
     async with _connect(db_path) as db:
         cursor = await db.execute(
-            "DELETE FROM mqtt_log WHERE timestamp < datetime('now', 'localtime', ?)",
-            (f"-{retention_days} days",),
+            "DELETE FROM mqtt_log WHERE timestamp < ?",
+            (threshold,),
         )
         await db.commit()
         return cursor.rowcount

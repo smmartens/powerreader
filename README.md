@@ -81,6 +81,7 @@ All configuration is via environment variables (set in `docker-compose.yml` or `
 | `WEB_PORT` | `8080` | Dashboard port |
 | `FIELD_MAP` | `""` | Custom MQTT field mapping (comma-separated `key=path` pairs, e.g. `total_in=SML.Total_in,power_w=SML.Power_curr`). Empty = LK13BE defaults. |
 | `ALLOWED_DEVICES` | `""` | Comma-separated allowlist of device IDs (e.g. `tasmota_ABC123,tasmota_DEF456`). Empty = accept all devices. |
+| `TZ` | `""` | Container timezone (e.g. `Europe/Brussels`). **Should be set** to match the Tasmota device timezone, otherwise system event log timestamps and API date ranges will be in UTC. |
 
 ## How the Calculation Works
 

@@ -16,6 +16,7 @@ services:
       - "8080:8080"
     environment:
       MQTT_HOST: mosquitto
+      TZ: Europe/Brussels  # set to your local timezone
       # MQTT_USER: powerreader
       # MQTT_PASS: secret
       # MQTT_TLS: "true"

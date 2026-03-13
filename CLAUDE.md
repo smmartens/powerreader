@@ -151,6 +151,7 @@ All config via environment variables (Docker-friendly):
 | `RAW_RETENTION_DAYS` | `30` | Days to keep raw readings |
 | `WEB_PORT` | `8080` | Dashboard port |
 | `ALLOWED_DEVICES` | `""` | Comma-separated device ID allowlist (empty = accept all) |
+| `TZ` | `""` | Container timezone (e.g. `Europe/Brussels`). **Must be set** to match the Tasmota device timezone, otherwise system event log timestamps and API date ranges will be in UTC. |
 
 ## Time Handling
 
