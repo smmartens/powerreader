@@ -9,12 +9,6 @@ A self-hosted power consumption monitor that subscribes to MQTT messages from a 
 
 ![Powerreader Dashboard](docs/dashboard103.png)
 
-## What's New in v1.1.0
-
-- **Day-of-week consumption chart** — New dashboard widget showing average daily kWh per weekday (Sunday–Saturday), with the same from/to date filter as the hourly averages chart.
-- **Consumption Records panel** — New dashboard panel with the top 5 highest and lowest consumption days, giving a quick view of your peak and off-peak days.
-- **Date range filter for hourly averages** — The "Average Consumption by Hour of Day" chart now has from/to date pickers. Default range is your first recorded reading to today.
-
 ## Hardware
 
 This project is built around a Tasmota-flashed ESP32C3 reading SML data from a smart meter. A ready-made device that works out of the box is the [Stromleser](https://stromleser.de/) — a compact ESP32-based SML reader that attaches to your meter's optical interface and publishes readings via MQTT. No soldering or custom firmware required.

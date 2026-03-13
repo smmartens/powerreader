@@ -2,6 +2,8 @@ import aiosqlite
 import pytest
 
 from powerreader.db import (
+    delete_day_data,
+    delete_hour_data,
     get_consumption_stats,
     get_coverage_stats,
     get_daily_agg_by_day_of_week,
@@ -10,6 +12,8 @@ from powerreader.db import (
     get_latest_reading,
     get_mqtt_log,
     get_readings,
+    get_spike_hours,
+    get_suspect_days,
     init_db,
     insert_mqtt_log,
     insert_reading,
@@ -300,3 +304,145 @@ async def test_mqtt_log_table_created(initialized_db: str) -> None:
         )
         row = await cursor.fetchone()
     assert row is not None
+
+
+# --- Admin: get_suspect_days ---
+
+
+@pytest.mark.asyncio
+async def test_get_suspect_days_returns_stuck_day(admin_db: str) -> None:
+    rows = await get_suspect_days(admin_db, "meter1")
+    assert len(rows) == 1
+    assert rows[0]["date"] == "2024-02-01"
+    assert rows[0]["reading_count"] == 3
+    assert rows[0]["total_in_value"] == pytest.approx(500.0)
+
+
+@pytest.mark.asyncio
+async def test_get_suspect_days_empty(initialized_db: str) -> None:
+    rows = await get_suspect_days(initialized_db, "meter1")
+    assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_get_suspect_days_excludes_normal_days(seeded_db: str) -> None:
+    from powerreader.aggregation import compute_daily_agg, compute_hourly_agg
+
+    await compute_hourly_agg(seeded_db)
+    await compute_daily_agg(seeded_db)
+    rows = await get_suspect_days(seeded_db, "meter1")
+    assert rows == []  # seeded data has non-zero consumption
+
+
+@pytest.mark.asyncio
+async def test_get_suspect_days_excludes_other_device(admin_db: str) -> None:
+    rows = await get_suspect_days(admin_db, "other_device")
+    assert rows == []
+
+
+# --- Admin: get_spike_hours ---
+
+
+@pytest.mark.asyncio
+async def test_get_spike_hours_returns_anomalous_bucket(admin_db: str) -> None:
+    rows = await get_spike_hours(admin_db, "meter1")
+    assert len(rows) == 1
+    assert rows[0]["hour"] == "2024-02-02T14"
+    assert rows[0]["date"] == "2024-02-02"
+    assert rows[0]["kwh_consumed"] == pytest.approx(100.0)
+    assert rows[0]["reading_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_get_spike_hours_empty(initialized_db: str) -> None:
+    rows = await get_spike_hours(initialized_db, "meter1")
+    assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_get_spike_hours_excludes_normal_hours(seeded_db: str) -> None:
+    from powerreader.aggregation import compute_hourly_agg
+
+    await compute_hourly_agg(seeded_db)
+    rows = await get_spike_hours(seeded_db, "meter1")
+    assert rows == []  # no single hour dominates the distribution
+
+
+@pytest.mark.asyncio
+async def test_get_spike_hours_excludes_other_device(admin_db: str) -> None:
+    rows = await get_spike_hours(admin_db, "other_device")
+    assert rows == []
+
+
+# --- Admin: delete_day_data ---
+
+
+@pytest.mark.asyncio
+async def test_delete_day_data_removes_all_tables(admin_db: str) -> None:
+    result = await delete_day_data(admin_db, "meter1", "2024-02-01")
+    assert result["raw_deleted"] == 3
+    assert result["hourly_deleted"] == 0  # no hourly_agg rows for this day
+    assert result["daily_deleted"] == 1
+
+
+@pytest.mark.asyncio
+async def test_delete_day_data_day_no_longer_suspect(admin_db: str) -> None:
+    await delete_day_data(admin_db, "meter1", "2024-02-01")
+    rows = await get_suspect_days(admin_db, "meter1")
+    assert all(r["date"] != "2024-02-01" for r in rows)
+
+
+@pytest.mark.asyncio
+async def test_delete_day_data_nonexistent_day(initialized_db: str) -> None:
+    result = await delete_day_data(initialized_db, "meter1", "2099-01-01")
+    assert result["raw_deleted"] == 0
+    assert result["hourly_deleted"] == 0
+    assert result["daily_deleted"] == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_day_data_only_affects_target_device(admin_db: str) -> None:
+    result = await delete_day_data(admin_db, "other_device", "2024-02-01")
+    assert result["raw_deleted"] == 0
+    assert result["daily_deleted"] == 0
+    rows = await get_suspect_days(admin_db, "meter1")
+    assert len(rows) == 1  # original data untouched
+
+
+# --- Admin: delete_hour_data ---
+
+
+@pytest.mark.asyncio
+async def test_delete_hour_data_removes_readings_and_agg(admin_db: str) -> None:
+    result = await delete_hour_data(admin_db, "meter1", "2024-02-02T14")
+    assert result["raw_deleted"] == 2
+    assert result["hourly_deleted"] == 1
+    assert result["daily_cleared"] == 1
+
+
+@pytest.mark.asyncio
+async def test_delete_hour_data_hour_no_longer_spike(admin_db: str) -> None:
+    await delete_hour_data(admin_db, "meter1", "2024-02-02T14")
+    rows = await get_spike_hours(admin_db, "meter1")
+    assert all(r["hour"] != "2024-02-02T14" for r in rows)
+
+
+@pytest.mark.asyncio
+async def test_delete_hour_data_nonexistent_hour(initialized_db: str) -> None:
+    result = await delete_hour_data(initialized_db, "meter1", "2099-01-01T00")
+    assert result["raw_deleted"] == 0
+    assert result["hourly_deleted"] == 0
+    assert result["daily_cleared"] == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_hour_data_only_affects_target_hour(admin_db: str) -> None:
+    result = await delete_hour_data(admin_db, "meter1", "2024-02-02T14")
+    # Normal hours for 2024-02-02 should be unaffected
+    async with aiosqlite.connect(admin_db) as db:
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM hourly_agg WHERE device_id='meter1'"
+            " AND substr(hour, 1, 10) = '2024-02-02'",
+        )
+        count = (await cursor.fetchone())[0]
+    assert count == 5  # 5 normal hours remain

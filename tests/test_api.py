@@ -433,6 +433,148 @@ class TestExportPage:
         assert "/" in resp.text
 
 
+class TestAdminEndpoints:
+    def test_suspect_days_no_issues(self, api_client):
+        resp = api_client.get("/api/admin/suspect_days?device_id=meter1")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["device_id"] == "meter1"
+        assert body["data"] == []
+
+    def test_suspect_days_returns_stuck_day(self, admin_client):
+        resp = admin_client.get("/api/admin/suspect_days?device_id=meter1")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["data"]) == 1
+        assert body["data"][0]["date"] == "2024-02-01"
+        assert body["data"][0]["reading_count"] == 3
+
+    def test_suspect_days_auto_detects_device(self, admin_client):
+        resp = admin_client.get("/api/admin/suspect_days")
+        assert resp.status_code == 200
+        assert resp.json()["device_id"] == "meter1"
+
+    def test_suspect_days_empty_db(self, tmp_path):
+        client = _make_empty_client(tmp_path)
+        resp = client.get("/api/admin/suspect_days")
+        assert resp.status_code == 200
+        assert resp.json()["data"] == []
+
+    def test_spike_hours_no_issues(self, api_client):
+        resp = api_client.get("/api/admin/spike_hours?device_id=meter1")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["device_id"] == "meter1"
+        assert body["data"] == []
+
+    def test_spike_hours_returns_anomalous_bucket(self, admin_client):
+        resp = admin_client.get("/api/admin/spike_hours?device_id=meter1")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["data"]) == 1
+        assert body["data"][0]["hour"] == "2024-02-02T14"
+        assert body["data"][0]["kwh_consumed"] == 100.0
+
+    def test_spike_hours_auto_detects_device(self, admin_client):
+        resp = admin_client.get("/api/admin/spike_hours")
+        assert resp.status_code == 200
+        assert resp.json()["device_id"] == "meter1"
+
+    def test_spike_hours_empty_db(self, tmp_path):
+        client = _make_empty_client(tmp_path)
+        resp = client.get("/api/admin/spike_hours")
+        assert resp.status_code == 200
+        assert resp.json()["data"] == []
+
+    def test_delete_day_requires_confirmed(self, admin_client):
+        resp = admin_client.delete(
+            "/api/admin/day?device_id=meter1&date=2024-02-01"
+        )
+        assert resp.status_code == 400
+
+    def test_delete_day_requires_suspect_day(self, admin_client):
+        resp = admin_client.delete(
+            "/api/admin/day?device_id=meter1&date=2024-01-01&confirmed=true"
+        )
+        assert resp.status_code == 409
+
+    def test_delete_day_invalid_date_returns_400(self, admin_client):
+        resp = admin_client.delete(
+            "/api/admin/day?device_id=meter1&date=not-a-date&confirmed=true"
+        )
+        assert resp.status_code == 400
+
+    def test_delete_day_success(self, admin_client):
+        resp = admin_client.delete(
+            "/api/admin/day?device_id=meter1&date=2024-02-01&confirmed=true"
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["date"] == "2024-02-01"
+        assert body["raw_deleted"] == 3
+        assert body["daily_deleted"] == 1
+
+    def test_delete_day_no_longer_in_suspect_list(self, admin_client):
+        admin_client.delete(
+            "/api/admin/day?device_id=meter1&date=2024-02-01&confirmed=true"
+        )
+        resp = admin_client.get("/api/admin/suspect_days?device_id=meter1")
+        assert resp.json()["data"] == []
+
+    def test_delete_hour_requires_confirmed(self, admin_client):
+        resp = admin_client.delete(
+            "/api/admin/hour?device_id=meter1&hour=2024-02-02T14"
+        )
+        assert resp.status_code == 400
+
+    def test_delete_hour_requires_spike_hour(self, admin_client):
+        resp = admin_client.delete(
+            "/api/admin/hour?device_id=meter1&hour=2024-02-02T08&confirmed=true"
+        )
+        assert resp.status_code == 409
+
+    def test_delete_hour_invalid_format_returns_400(self, admin_client):
+        resp = admin_client.delete(
+            "/api/admin/hour?device_id=meter1&hour=not-valid&confirmed=true"
+        )
+        assert resp.status_code == 400
+
+    def test_delete_hour_success(self, admin_client):
+        resp = admin_client.delete(
+            "/api/admin/hour?device_id=meter1&hour=2024-02-02T14&confirmed=true"
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["hour"] == "2024-02-02T14"
+        assert body["raw_deleted"] == 2
+        assert body["hourly_deleted"] == 1
+        assert body["daily_cleared"] == 1
+
+    def test_delete_hour_no_longer_in_spike_list(self, admin_client):
+        admin_client.delete(
+            "/api/admin/hour?device_id=meter1&hour=2024-02-02T14&confirmed=true"
+        )
+        resp = admin_client.get("/api/admin/spike_hours?device_id=meter1")
+        assert resp.json()["data"] == []
+
+
+class TestAdminPage:
+    def test_returns_html(self, api_client):
+        resp = api_client.get("/admin")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "Admin" in resp.text
+
+    def test_has_danger_zone(self, api_client):
+        resp = api_client.get("/admin")
+        assert "Danger Zone" in resp.text
+
+    def test_has_nav_links(self, api_client):
+        resp = api_client.get("/admin")
+        assert "/log" in resp.text
+        assert "/" in resp.text
+
+
 class TestSecurityHeaders:
     def test_security_headers_present(self, api_client):
         resp = api_client.get("/api/version")
