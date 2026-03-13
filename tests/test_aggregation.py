@@ -199,7 +199,6 @@ async def test_prune_mqtt_log_deletes_old(db_path: str) -> None:
             " VALUES ('2020-01-01T00:00:00', 'dev1', 'ok', 'old', 't')"
         )
         await db.commit()
-    # Insert a recent entry (uses default datetime('now'))
     await insert_mqtt_log(db_path, "dev1", "ok", "recent", "t")
 
     deleted = await prune_mqtt_log(db_path, retention_days=30)

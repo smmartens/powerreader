@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 import aiosqlite
 
@@ -50,8 +51,8 @@ _INSERT_READING_SQL = """INSERT INTO raw_readings
    (device_id, timestamp, total_in, total_out, power_w, voltage)
    VALUES (?, ?, ?, ?, ?, ?)"""
 
-_INSERT_LOG_SQL = """INSERT INTO mqtt_log (device_id, status, summary, topic)
-   VALUES (?, ?, ?, ?)"""
+_INSERT_LOG_SQL = """INSERT INTO mqtt_log (device_id, timestamp, status, summary, topic)
+   VALUES (?, ?, ?, ?, ?)"""
 
 # Average days per calendar month (365.25 / 12), used for kWh/month estimates
 _AVG_DAYS_PER_MONTH = 30.44
@@ -142,7 +143,7 @@ async def insert_reading_and_log(
         )
         await db.execute(
             _INSERT_LOG_SQL,
-            (device_id, log_status, log_summary, log_topic),
+            (device_id, timestamp, log_status, log_summary, log_topic),
         )
         await db.commit()
         return cursor.lastrowid  # type: ignore[return-value]
@@ -323,12 +324,14 @@ async def insert_mqtt_log(
     status: str,
     summary: str | None,
     topic: str | None,
+    timestamp: str | None = None,
 ) -> int:
     """Insert an MQTT log entry and return its row id."""
+    ts = timestamp or datetime.now().isoformat(timespec="seconds")
     async with _connect(db_path) as db:
         cursor = await db.execute(
             _INSERT_LOG_SQL,
-            (device_id, status, summary, topic),
+            (device_id, ts, status, summary, topic),
         )
         await db.commit()
         return cursor.lastrowid  # type: ignore[return-value]
