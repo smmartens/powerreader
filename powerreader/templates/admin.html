@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+
+{% block title %}Powerreader - Admin{% endblock %}
+
+{% block head %}
+    <style>
+        .scan-bar { margin-bottom: 1.25rem; display: flex; align-items: center; gap: 1rem; }
+        .scan-bar button {
+            background: #0f3460; color: #e0e0e0;
+            border: 1px solid #1a5276; padding: 0.4rem 1.1rem;
+            border-radius: 4px; cursor: pointer; font-size: 0.9rem;
+        }
+        .scan-bar button:hover { background: #1a5276; }
+        .scan-status { font-size: 0.85rem; color: #8892b0; }
+
+        /* Danger Zone */
+        .danger-zone {
+            border: 1px solid rgba(231, 76, 60, 0.45);
+            border-radius: 8px;
+            padding: 1rem 1.25rem 1.25rem;
+            background: rgba(231, 76, 60, 0.04);
+        }
+        .danger-zone-header {
+            color: #e74c3c;
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 1.25rem;
+        }
+        .danger-subsection { margin-bottom: 1.75rem; }
+        .danger-subsection:last-child { margin-bottom: 0; }
+        .danger-subsection h3 { font-size: 0.95rem; margin-bottom: 0.15rem; }
+        .danger-subsection .subsection-desc {
+            font-size: 0.82rem; color: #8892b0; margin-bottom: 0.75rem;
+        }
+
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        th {
+            text-align: left; padding: 0.5rem;
+            border-bottom: 1px solid #1a5276;
+            color: #8892b0; font-weight: 600;
+        }
+        td { padding: 0.4rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); }
+
+        .btn-danger {
+            background: transparent; color: #e74c3c;
+            border: 1px solid rgba(231,76,60,0.5);
+            padding: 0.2rem 0.7rem; border-radius: 4px;
+            cursor: pointer; font-size: 0.8rem;
+        }
+        .btn-danger:hover { background: rgba(231,76,60,0.12); }
+        .btn-danger-sm {
+            background: #e74c3c; color: #fff;
+            border: none; padding: 0.2rem 0.6rem;
+            border-radius: 4px; cursor: pointer; font-size: 0.8rem; margin-left: 0.5rem;
+        }
+        .btn-danger-sm:hover { background: #c0392b; }
+        .btn-cancel {
+            background: transparent; color: #8892b0;
+            border: 1px solid #1a5276; padding: 0.2rem 0.6rem;
+            border-radius: 4px; cursor: pointer; font-size: 0.8rem; margin-left: 0.25rem;
+        }
+        .btn-cancel:hover { background: #1a5276; color: #e0e0e0; }
+        .confirm-text { font-size: 0.8rem; color: #e0e0e0; margin-left: 0.5rem; }
+        .row-deleted td { opacity: 0.4; text-decoration: line-through; }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <div class="panel">
+        <h2>Admin</h2>
+
+        <div class="scan-bar">
+            <button id="scan-btn" onclick="scan()">Scan for bad data</button>
+            <span class="scan-status" id="scan-status"></span>
+        </div>
+
+        <div class="danger-zone">
+            <div class="danger-zone-header">⚠ Danger Zone</div>
+
+            <div class="danger-subsection">
+                <h3>Zero-consumption days</h3>
+                <p class="subsection-desc">
+                    Days where the device reported an identical, non-changing meter value the entire day
+                    — resulting in 0 kWh consumed. Deletes all raw readings, hourly aggregates, and
+                    the daily aggregate for the selected date.
+                </p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Readings</th>
+                            <th>Stuck value</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="suspect-days-body"></tbody>
+                </table>
+                <div class="no-data" id="suspect-days-empty" style="display:none;">
+                    No zero-consumption days found.
+                </div>
+            </div>
+
+            <div class="danger-subsection">
+                <h3>Spike hours</h3>
+                <p class="subsection-desc">
+                    Hours where consumption is anomalously high (&gt;5× average) — typically the
+                    transition point where the meter value jumped from the stuck value to the real
+                    accumulated total. Deletes raw readings and the hourly aggregate for that bucket;
+                    the daily aggregate is cleared and will be recomputed automatically.
+                </p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Hour</th>
+                            <th>Date</th>
+                            <th>kWh in bucket</th>
+                            <th>Readings</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="spike-hours-body"></tbody>
+                </table>
+                <div class="no-data" id="spike-hours-empty" style="display:none;">
+                    No spike hours found.
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <script>
+        let _deviceId = null;
+
+        function rowId(type, key) {
+            return type + '-row-' + key.replace(/[^a-zA-Z0-9]/g, '-');
+        }
+        function confirmId(type, key) {
+            return type + '-confirm-' + key.replace(/[^a-zA-Z0-9]/g, '-');
+        }
+
+        function checkEmpty(tbodyId, emptyId) {
+            const tbody = document.getElementById(tbodyId);
+            const empty = document.getElementById(emptyId);
+            if (tbody && empty) {
+                empty.style.display = tbody.children.length === 0 ? 'block' : 'none';
+            }
+        }
+
+        function renderSuspectDays(rows) {
+            const tbody = document.getElementById('suspect-days-body');
+            const empty = document.getElementById('suspect-days-empty');
+            if (!rows.length) {
+                tbody.innerHTML = '';
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+            tbody.innerHTML = rows.map(r => {
+                const rid = rowId('day', r.date);
+                const cid = confirmId('day', r.date);
+                const d = escapeHtml(r.date);
+                return `<tr id="${rid}">
+                    <td>${d}</td>
+                    <td>${r.reading_count}</td>
+                    <td>${r.total_in_value} kWh</td>
+                    <td>
+                        <button class="btn-danger" onclick="showConfirm('${cid}', this)">Delete</button>
+                        <span id="${cid}" style="display:none">
+                            <span class="confirm-text">Delete all data for ${d}?</span>
+                            <button class="btn-danger-sm" onclick="deleteDay('${d}', '${rid}', '${cid}')">Confirm</button>
+                            <button class="btn-cancel" onclick="hideConfirm('${cid}', this)">Cancel</button>
+                        </span>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        function renderSpikeHours(rows) {
+            const tbody = document.getElementById('spike-hours-body');
+            const empty = document.getElementById('spike-hours-empty');
+            if (!rows.length) {
+                tbody.innerHTML = '';
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+            tbody.innerHTML = rows.map(r => {
+                const rid = rowId('hour', r.hour);
+                const cid = confirmId('hour', r.hour);
+                const h = escapeHtml(r.hour);
+                return `<tr id="${rid}">
+                    <td>${h}</td>
+                    <td>${escapeHtml(r.date)}</td>
+                    <td>${r.kwh_consumed}</td>
+                    <td>${r.reading_count}</td>
+                    <td>
+                        <button class="btn-danger" onclick="showConfirm('${cid}', this)">Delete</button>
+                        <span id="${cid}" style="display:none">
+                            <span class="confirm-text">Delete ${h}?</span>
+                            <button class="btn-danger-sm" onclick="deleteHour('${h}', '${rid}', '${cid}')">Confirm</button>
+                            <button class="btn-cancel" onclick="hideConfirm('${cid}', this)">Cancel</button>
+                        </span>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        function showConfirm(cid, btn) {
+            btn.style.display = 'none';
+            document.getElementById(cid).style.display = 'inline';
+        }
+
+        function hideConfirm(cid, cancelBtn) {
+            const span = document.getElementById(cid);
+            span.style.display = 'none';
+            span.previousElementSibling.style.display = 'inline';
+        }
+
+        async function deleteDay(date, rid, cid) {
+            const params = new URLSearchParams({
+                device_id: _deviceId, date, confirmed: 'true'
+            });
+            try {
+                const resp = await fetch('/api/admin/day?' + params, { method: 'DELETE' });
+                if (resp.ok) {
+                    const row = document.getElementById(rid);
+                    if (row) row.remove();
+                    checkEmpty('suspect-days-body', 'suspect-days-empty');
+                } else {
+                    const body = await resp.json().catch(() => ({}));
+                    alert('Error: ' + (body.detail || resp.statusText));
+                    hideConfirm(cid, document.querySelector(`#${cid} .btn-cancel`));
+                }
+            } catch (e) {
+                alert('Request failed: ' + e.message);
+            }
+        }
+
+        async function deleteHour(hour, rid, cid) {
+            const params = new URLSearchParams({
+                device_id: _deviceId, hour, confirmed: 'true'
+            });
+            try {
+                const resp = await fetch('/api/admin/hour?' + params, { method: 'DELETE' });
+                if (resp.ok) {
+                    const row = document.getElementById(rid);
+                    if (row) row.remove();
+                    checkEmpty('spike-hours-body', 'spike-hours-empty');
+                } else {
+                    const body = await resp.json().catch(() => ({}));
+                    alert('Error: ' + (body.detail || resp.statusText));
+                    hideConfirm(cid, document.querySelector(`#${cid} .btn-cancel`));
+                }
+            } catch (e) {
+                alert('Request failed: ' + e.message);
+            }
+        }
+
+        async function scan() {
+            const btn = document.getElementById('scan-btn');
+            const status = document.getElementById('scan-status');
+            btn.disabled = true;
+            status.textContent = 'Scanning…';
+
+            try {
+                const [daysResp, hoursResp] = await Promise.all([
+                    fetch('/api/admin/suspect_days'),
+                    fetch('/api/admin/spike_hours'),
+                ]);
+                if (!daysResp.ok || !hoursResp.ok) {
+                    status.textContent = 'Scan failed.';
+                    return;
+                }
+                const days = await daysResp.json();
+                const hours = await hoursResp.json();
+                _deviceId = days.device_id || hours.device_id;
+                renderSuspectDays(days.data || []);
+                renderSpikeHours(hours.data || []);
+                const total = (days.data || []).length + (hours.data || []).length;
+                status.textContent = total
+                    ? `Found ${total} item${total !== 1 ? 's' : ''}.`
+                    : 'No issues found.';
+            } catch (e) {
+                status.textContent = 'Scan failed: ' + e.message;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+    </script>
+{% endblock %}

@@ -430,3 +430,127 @@ async def get_mqtt_log(db_path: str, limit: int = 200) -> list[dict]:
             (limit,),
         )
         return await _fetch_all(cursor)
+
+
+# --- Admin / data cleanup ---
+
+
+async def get_suspect_days(db_path: str, device_id: str) -> list[dict]:
+    """Return days where kwh_consumed is 0 and all total_in values are identical.
+
+    These are candidate bad-data days caused by a device sending a constant
+    meter value. Each row includes date, reading_count, and the constant
+    total_in value for inspection.
+    """
+    async with _connect(db_path, row_factory=True) as db:
+        cursor = await db.execute(
+            """
+            SELECT
+                d.date,
+                COUNT(r.id) AS reading_count,
+                ROUND(MIN(r.total_in), 3) AS total_in_value
+            FROM daily_agg d
+            JOIN raw_readings r
+                ON r.device_id = d.device_id
+                AND substr(r.timestamp, 1, 10) = d.date
+            WHERE d.device_id = ?
+              AND d.kwh_consumed = 0
+              AND r.total_in IS NOT NULL
+            GROUP BY d.date
+            HAVING MIN(r.total_in) = MAX(r.total_in)
+            ORDER BY d.date
+            """,
+            (device_id,),
+        )
+        return await _fetch_all(cursor)
+
+
+async def get_spike_hours(db_path: str, device_id: str) -> list[dict]:
+    """Return hourly buckets where kwh_consumed is anomalously high.
+
+    Flags hours where consumption exceeds 5× the average non-zero hourly
+    consumption (minimum threshold 1.0 kWh). These are likely transition
+    points where a previously stuck meter value suddenly jumped to the real
+    accumulated total.
+    """
+    async with _connect(db_path, row_factory=True) as db:
+        cursor = await db.execute(
+            """
+            SELECT
+                h.hour,
+                substr(h.hour, 1, 10) AS date,
+                ROUND(h.kwh_consumed, 3) AS kwh_consumed,
+                h.reading_count
+            FROM hourly_agg h
+            WHERE h.device_id = ?
+              AND h.kwh_consumed > (
+                  SELECT MAX(1.0, AVG(kwh_consumed) * 5)
+                  FROM hourly_agg
+                  WHERE device_id = ? AND kwh_consumed > 0
+              )
+            ORDER BY h.hour
+            """,
+            (device_id, device_id),
+        )
+        return await _fetch_all(cursor)
+
+
+async def delete_day_data(db_path: str, device_id: str, date: str) -> dict:
+    """Delete all data for a given date across raw_readings, hourly_agg, daily_agg.
+
+    Returns counts of deleted rows per table.
+    """
+    async with _connect(db_path) as db:
+        await db.execute("PRAGMA busy_timeout=5000")
+        c1 = await db.execute(
+            "DELETE FROM raw_readings"
+            " WHERE device_id = ? AND substr(timestamp, 1, 10) = ?",
+            (device_id, date),
+        )
+        c2 = await db.execute(
+            "DELETE FROM hourly_agg"
+            " WHERE device_id = ? AND substr(hour, 1, 10) = ?",
+            (device_id, date),
+        )
+        c3 = await db.execute(
+            "DELETE FROM daily_agg WHERE device_id = ? AND date = ?",
+            (device_id, date),
+        )
+        await db.commit()
+    return {
+        "raw_deleted": c1.rowcount,
+        "hourly_deleted": c2.rowcount,
+        "daily_deleted": c3.rowcount,
+    }
+
+
+async def delete_hour_data(db_path: str, device_id: str, hour: str) -> dict:
+    """Delete raw_readings and hourly_agg for a specific hour bucket.
+
+    Also removes the daily_agg row for the affected date so the scheduler
+    will recompute it cleanly on its next run.
+    Returns counts of deleted/cleared rows.
+    """
+    date = hour[:10]
+    async with _connect(db_path) as db:
+        await db.execute("PRAGMA busy_timeout=5000")
+        c1 = await db.execute(
+            "DELETE FROM raw_readings"
+            " WHERE device_id = ?"
+            " AND strftime('%Y-%m-%dT%H', timestamp) = ?",
+            (device_id, hour),
+        )
+        c2 = await db.execute(
+            "DELETE FROM hourly_agg WHERE device_id = ? AND hour = ?",
+            (device_id, hour),
+        )
+        c3 = await db.execute(
+            "DELETE FROM daily_agg WHERE device_id = ? AND date = ?",
+            (device_id, date),
+        )
+        await db.commit()
+    return {
+        "raw_deleted": c1.rowcount,
+        "hourly_deleted": c2.rowcount,
+        "daily_cleared": c3.rowcount,
+    }

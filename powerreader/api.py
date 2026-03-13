@@ -1,5 +1,6 @@
 import csv
 import io
+import re
 from collections.abc import AsyncIterator
 from datetime import date, datetime, timedelta
 
@@ -332,3 +333,96 @@ async def export_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# --- Admin endpoints ---
+
+_HOUR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}$")
+
+
+def _parse_hour(value: str) -> str:
+    """Validate a YYYY-MM-DDTHH string, or raise 400."""
+    if not _HOUR_RE.match(value):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid hour format: '{value}'. Use YYYY-MM-DDTHH.",
+        )
+    return value
+
+
+@router.get("/admin/suspect_days")
+async def get_suspect_days(
+    request: Request, device_id: str | None = None
+) -> dict:
+    """Return days with zero consumption caused by a stuck meter value."""
+    resolved = await _resolve_device_id(request.app.state.db_path, device_id)
+    if resolved is None:
+        return {"device_id": None, "data": []}
+    data = await db.get_suspect_days(request.app.state.db_path, resolved)
+    return {"device_id": resolved, "data": data}
+
+
+@router.delete("/admin/day")
+async def delete_day(
+    request: Request,
+    date: str = Query(...),
+    device_id: str = Query(...),
+    confirmed: str = Query("false"),
+) -> dict:
+    """Delete all data for a zero-consumption suspect day."""
+    if confirmed != "true":
+        raise HTTPException(
+            status_code=400, detail="Pass confirmed=true to proceed."
+        )
+    date_parsed = _parse_date(date)
+    device_id = device_id[:_MAX_DEVICE_ID_LEN]
+    suspect = await db.get_suspect_days(
+        request.app.state.db_path, device_id
+    )
+    if date_parsed.isoformat() not in {r["date"] for r in suspect}:
+        raise HTTPException(
+            status_code=409,
+            detail="Date is not a suspect zero-consumption day.",
+        )
+    result = await db.delete_day_data(
+        request.app.state.db_path, device_id, date_parsed.isoformat()
+    )
+    return {"date": date_parsed.isoformat(), "device_id": device_id, **result}
+
+
+@router.get("/admin/spike_hours")
+async def get_spike_hours(
+    request: Request, device_id: str | None = None
+) -> dict:
+    """Return hourly buckets with anomalously high consumption (spike candidates)."""
+    resolved = await _resolve_device_id(request.app.state.db_path, device_id)
+    if resolved is None:
+        return {"device_id": None, "data": []}
+    data = await db.get_spike_hours(request.app.state.db_path, resolved)
+    return {"device_id": resolved, "data": data}
+
+
+@router.delete("/admin/hour")
+async def delete_hour(
+    request: Request,
+    hour: str = Query(...),
+    device_id: str = Query(...),
+    confirmed: str = Query("false"),
+) -> dict:
+    """Delete raw readings and hourly aggregate for a spike hour bucket."""
+    if confirmed != "true":
+        raise HTTPException(
+            status_code=400, detail="Pass confirmed=true to proceed."
+        )
+    hour = _parse_hour(hour)
+    device_id = device_id[:_MAX_DEVICE_ID_LEN]
+    spikes = await db.get_spike_hours(request.app.state.db_path, device_id)
+    if hour not in {r["hour"] for r in spikes}:
+        raise HTTPException(
+            status_code=409,
+            detail="Hour is not a detected spike bucket.",
+        )
+    result = await db.delete_hour_data(
+        request.app.state.db_path, device_id, hour
+    )
+    return {"hour": hour, "device_id": device_id, **result}
