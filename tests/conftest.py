@@ -127,44 +127,36 @@ async def admin_db(initialized_db: str) -> str:
     normal hours), with 2 raw readings and a daily_agg row.
     """
     async with aiosqlite.connect(initialized_db) as db:
+        _ins_raw = (
+            "INSERT INTO raw_readings (device_id, timestamp, total_in) VALUES (?, ?, ?)"
+        )
+        _ins_hourly = (
+            "INSERT INTO hourly_agg"
+            " (device_id, hour, avg_power_w, kwh_consumed, reading_count)"
+            " VALUES (?, ?, ?, ?, ?)"
+        )
+        _ins_daily = (
+            "INSERT INTO daily_agg"
+            " (device_id, date, avg_power_w, kwh_consumed, reading_count)"
+            " VALUES (?, ?, ?, ?, ?)"
+        )
+
         # Suspect day raw readings (constant total_in)
         for ts in ("2024-02-01T10:00:00", "2024-02-01T10:20:00", "2024-02-01T10:40:00"):
-            await db.execute(
-                "INSERT INTO raw_readings (device_id, timestamp, total_in) VALUES (?, ?, ?)",
-                ("meter1", ts, 500.0),
-            )
+            await db.execute(_ins_raw, ("meter1", ts, 500.0))
         # Zero-consumption daily aggregate for the stuck day
-        await db.execute(
-            "INSERT INTO daily_agg (device_id, date, avg_power_w, kwh_consumed, reading_count)"
-            " VALUES (?, ?, ?, ?, ?)",
-            ("meter1", "2024-02-01", 0.0, 0.0, 3),
-        )
+        await db.execute(_ins_daily, ("meter1", "2024-02-01", 0.0, 0.0, 3))
 
         # Normal hours leading up to the spike (5 hours at 1.0 kWh each)
         for h in ("08", "09", "10", "11", "12"):
-            await db.execute(
-                "INSERT INTO hourly_agg (device_id, hour, avg_power_w, kwh_consumed, reading_count)"
-                " VALUES (?, ?, ?, ?, ?)",
-                ("meter1", f"2024-02-02T{h}", 1000.0, 1.0, 2),
-            )
+            await db.execute(_ins_hourly, ("meter1", f"2024-02-02T{h}", 1000.0, 1.0, 2))
         # Spike hour raw readings
         for ts in ("2024-02-02T14:00:00", "2024-02-02T14:30:00"):
-            await db.execute(
-                "INSERT INTO raw_readings (device_id, timestamp, total_in) VALUES (?, ?, ?)",
-                ("meter1", ts, 600.0),
-            )
+            await db.execute(_ins_raw, ("meter1", ts, 600.0))
         # Spike hourly aggregate (100 kWh >> 5× avg ≈ MAX(1.0, 17.5*5)=87.5)
-        await db.execute(
-            "INSERT INTO hourly_agg (device_id, hour, avg_power_w, kwh_consumed, reading_count)"
-            " VALUES (?, ?, ?, ?, ?)",
-            ("meter1", "2024-02-02T14", 100000.0, 100.0, 2),
-        )
+        await db.execute(_ins_hourly, ("meter1", "2024-02-02T14", 100000.0, 100.0, 2))
         # Daily aggregate for the spike day (will be cleared on hour delete)
-        await db.execute(
-            "INSERT INTO daily_agg (device_id, date, avg_power_w, kwh_consumed, reading_count)"
-            " VALUES (?, ?, ?, ?, ?)",
-            ("meter1", "2024-02-02", 50000.0, 105.0, 12),
-        )
+        await db.execute(_ins_daily, ("meter1", "2024-02-02", 50000.0, 105.0, 12))
         await db.commit()
     return initialized_db
 

@@ -508,8 +508,7 @@ async def delete_day_data(db_path: str, device_id: str, date: str) -> dict:
             (device_id, date),
         )
         c2 = await db.execute(
-            "DELETE FROM hourly_agg"
-            " WHERE device_id = ? AND substr(hour, 1, 10) = ?",
+            "DELETE FROM hourly_agg WHERE device_id = ? AND substr(hour, 1, 10) = ?",
             (device_id, date),
         )
         c3 = await db.execute(

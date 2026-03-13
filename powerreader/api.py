@@ -351,9 +351,7 @@ def _parse_hour(value: str) -> str:
 
 
 @router.get("/admin/suspect_days")
-async def get_suspect_days(
-    request: Request, device_id: str | None = None
-) -> dict:
+async def get_suspect_days(request: Request, device_id: str | None = None) -> dict:
     """Return days with zero consumption caused by a stuck meter value."""
     resolved = await _resolve_device_id(request.app.state.db_path, device_id)
     if resolved is None:
@@ -371,14 +369,10 @@ async def delete_day(
 ) -> dict:
     """Delete all data for a zero-consumption suspect day."""
     if confirmed != "true":
-        raise HTTPException(
-            status_code=400, detail="Pass confirmed=true to proceed."
-        )
+        raise HTTPException(status_code=400, detail="Pass confirmed=true to proceed.")
     date_parsed = _parse_date(date)
     device_id = device_id[:_MAX_DEVICE_ID_LEN]
-    suspect = await db.get_suspect_days(
-        request.app.state.db_path, device_id
-    )
+    suspect = await db.get_suspect_days(request.app.state.db_path, device_id)
     if date_parsed.isoformat() not in {r["date"] for r in suspect}:
         raise HTTPException(
             status_code=409,
@@ -391,9 +385,7 @@ async def delete_day(
 
 
 @router.get("/admin/spike_hours")
-async def get_spike_hours(
-    request: Request, device_id: str | None = None
-) -> dict:
+async def get_spike_hours(request: Request, device_id: str | None = None) -> dict:
     """Return hourly buckets with anomalously high consumption (spike candidates)."""
     resolved = await _resolve_device_id(request.app.state.db_path, device_id)
     if resolved is None:
@@ -411,9 +403,7 @@ async def delete_hour(
 ) -> dict:
     """Delete raw readings and hourly aggregate for a spike hour bucket."""
     if confirmed != "true":
-        raise HTTPException(
-            status_code=400, detail="Pass confirmed=true to proceed."
-        )
+        raise HTTPException(status_code=400, detail="Pass confirmed=true to proceed.")
     hour = _parse_hour(hour)
     device_id = device_id[:_MAX_DEVICE_ID_LEN]
     spikes = await db.get_spike_hours(request.app.state.db_path, device_id)
@@ -422,7 +412,5 @@ async def delete_hour(
             status_code=409,
             detail="Hour is not a detected spike bucket.",
         )
-    result = await db.delete_hour_data(
-        request.app.state.db_path, device_id, hour
-    )
+    result = await db.delete_hour_data(request.app.state.db_path, device_id, hour)
     return {"hour": hour, "device_id": device_id, **result}

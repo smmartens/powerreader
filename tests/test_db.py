@@ -437,7 +437,7 @@ async def test_delete_hour_data_nonexistent_hour(initialized_db: str) -> None:
 
 @pytest.mark.asyncio
 async def test_delete_hour_data_only_affects_target_hour(admin_db: str) -> None:
-    result = await delete_hour_data(admin_db, "meter1", "2024-02-02T14")
+    await delete_hour_data(admin_db, "meter1", "2024-02-02T14")
     # Normal hours for 2024-02-02 should be unaffected
     async with aiosqlite.connect(admin_db) as db:
         cursor = await db.execute(

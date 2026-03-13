@@ -487,9 +487,7 @@ class TestAdminEndpoints:
         assert resp.json()["data"] == []
 
     def test_delete_day_requires_confirmed(self, admin_client):
-        resp = admin_client.delete(
-            "/api/admin/day?device_id=meter1&date=2024-02-01"
-        )
+        resp = admin_client.delete("/api/admin/day?device_id=meter1&date=2024-02-01")
         assert resp.status_code == 400
 
     def test_delete_day_requires_suspect_day(self, admin_client):
