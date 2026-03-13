@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime
 
@@ -170,15 +170,15 @@ async def get_latest_reading(db_path: str, device_id: str | None = None) -> dict
 
 
 async def get_readings(
-    db_path: str, device_id: str, start: str, end: str
+    db_path: str, device_id: str, start: str, end: str, limit: int = 10_000
 ) -> list[dict]:
     """Return raw readings for a device within [start, end] time range."""
     async with _connect(db_path, row_factory=True) as db:
         cursor = await db.execute(
             """SELECT * FROM raw_readings
                WHERE device_id = ? AND timestamp >= ? AND timestamp <= ?
-               ORDER BY timestamp""",
-            (device_id, start, end),
+               ORDER BY timestamp LIMIT ?""",
+            (device_id, start, end, limit),
         )
         return await _fetch_all(cursor)
 
@@ -220,6 +220,29 @@ async def get_hourly_agg_by_hour_of_day(
             (device_id, start, end),
         )
         return await _fetch_all(cursor)
+
+
+async def iter_hourly_agg_by_hour_of_day(
+    db_path: str, device_id: str, start: str, end: str
+) -> AsyncGenerator[dict, None]:
+    """Yield hourly-agg-by-hour-of-day rows one at a time without buffering."""
+    async with _connect(db_path, row_factory=True) as db:
+        cursor = await db.execute(
+            """SELECT
+                CAST(strftime('%H', hour || ':00:00') AS INTEGER) AS hour_of_day,
+                ROUND(AVG(avg_power_w), 1) AS avg_power_w,
+                ROUND(SUM(kwh_consumed), 3) AS total_kwh,
+                SUM(reading_count) AS reading_count,
+                COUNT(*) AS days_covered,
+                ROUND(AVG(coverage_seconds), 0) AS avg_coverage_seconds
+            FROM hourly_agg
+            WHERE device_id = ? AND hour >= ? AND hour <= ?
+            GROUP BY hour_of_day
+            ORDER BY hour_of_day""",
+            (device_id, start, end),
+        )
+        async for row in cursor:
+            yield dict(row)
 
 
 async def get_daily_agg(

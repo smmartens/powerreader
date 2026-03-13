@@ -278,10 +278,9 @@ async def _generate_hourly_csv(
 
     start_hour = start.isoformat() + "T00"
     end_hour = end.isoformat() + "T23"
-    rows = await db.get_hourly_agg_by_hour_of_day(
+    async for row in db.iter_hourly_agg_by_hour_of_day(
         db_path, device_id, start_hour, end_hour
-    )
-    for row in rows:
+    ):
         writer.writerow([row.get(col) for col in _CSV_COLUMNS_HOURLY])
         yield buf.getvalue()
         buf.seek(0)

@@ -96,6 +96,8 @@ def setup_scheduler(db_path: str, retention_days: int) -> AsyncIOScheduler:
         minutes=10,
         args=[db_path],
         id="hourly_agg",
+        coalesce=True,
+        max_instances=1,
     )
     scheduler.add_job(
         compute_daily_agg,
@@ -103,6 +105,8 @@ def setup_scheduler(db_path: str, retention_days: int) -> AsyncIOScheduler:
         minutes=60,
         args=[db_path],
         id="daily_agg",
+        coalesce=True,
+        max_instances=1,
     )
     scheduler.add_job(
         prune_raw_readings,
@@ -110,6 +114,8 @@ def setup_scheduler(db_path: str, retention_days: int) -> AsyncIOScheduler:
         hours=24,
         args=[db_path, retention_days],
         id="prune_raw",
+        coalesce=True,
+        max_instances=1,
     )
     scheduler.add_job(
         prune_mqtt_log,
@@ -117,5 +123,7 @@ def setup_scheduler(db_path: str, retention_days: int) -> AsyncIOScheduler:
         hours=24,
         args=[db_path, retention_days],
         id="prune_mqtt_log",
+        coalesce=True,
+        max_instances=1,
     )
     return scheduler
