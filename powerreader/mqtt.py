@@ -236,8 +236,16 @@ class MqttSubscriber:
                 last = self._last_stored.get(device_id)
                 if last is not None and now - last < 60.0:
                     return
-
-            self._last_stored[device_id] = now
+                self._last_stored[device_id] = now
+                # Lazy TTL eviction: keep the dict bounded when many device IDs
+                # are seen (e.g. ALLOWED_DEVICES not set). Entries older than
+                # 120 s are irrelevant for the 60-second window.
+                if len(self._last_stored) > 200:
+                    self._last_stored = {
+                        k: v
+                        for k, v in self._last_stored.items()
+                        if now - v <= 120.0
+                    }
 
             # Build summary from parsed values
             parts: list[str] = []
