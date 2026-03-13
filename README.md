@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/smmartens/powerreader/actions/workflows/ci.yml/badge.svg)](https://github.com/smmartens/powerreader/actions/workflows/ci.yml)
 [![Release](https://github.com/smmartens/powerreader/actions/workflows/release.yml/badge.svg)](https://github.com/smmartens/powerreader/actions/workflows/release.yml)
-[![GitHub release](https://img.shields.io/github/v/release/smmartens/powerreader)](https://github.com/smmartens/powerreader/releases)
+[![GitHub tag](https://img.shields.io/github/v/tag/smmartens/powerreader)](https://github.com/smmartens/powerreader/tags)
 [![License](https://img.shields.io/github/license/smmartens/powerreader)](https://github.com/smmartens/powerreader/blob/main/LICENSE)
 
 A self-hosted power consumption monitor that subscribes to MQTT messages from a Tasmota-flashed ESP32C3 connected to a smart power meter, stores readings in SQLite, computes consumption analytics, and serves a web dashboard — all in a single Docker container.
