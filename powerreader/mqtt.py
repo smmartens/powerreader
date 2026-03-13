@@ -242,9 +242,7 @@ class MqttSubscriber:
                 # 120 s are irrelevant for the 60-second window.
                 if len(self._last_stored) > 200:
                     self._last_stored = {
-                        k: v
-                        for k, v in self._last_stored.items()
-                        if now - v <= 120.0
+                        k: v for k, v in self._last_stored.items() if now - v <= 120.0
                     }
 
             # Build summary from parsed values
